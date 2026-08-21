@@ -1,51 +1,41 @@
 import "./style.css";
 
-const features = [
-  ["📞", "Voice Calls"],
-  ["🎥", "Video Calls"],
-  ["📸", "Stories"],
-  ["🟢", "Status"],
-  ["📢", "Channels"],
-  ["💬", "Messaging"],
-  ["👥", "Communities"]
-];
+const state = {
+  user: {
+    name: "Veylora User",
+    phone: "+234 800 000 0000"
+  },
 
-const plans = [
-  {
-    name: "Go",
-    price: "₦10,000",
-    trial: "",
-    features: [
-      "More AI credits",
-      "Faster AI processing"
-    ]
-  },
-  {
-    name: "Pro",
-    price: "₦30,000",
-    trial: "2-month eligible trial",
-    features: [
-      "Everything in Go",
-      "Advanced AI",
-      "Higher AI limits",
-      "Priority processing"
-    ]
-  },
-  {
-    name: "Ultra",
-    price: "₦50,000",
-    trial: "7-day eligible trial",
-    features: [
-      "Everything in Pro",
-      "Highest AI priority",
-      "Highest AI allowance",
-      "Ultra AI tools"
-    ]
-  }
-];
+  aiCredits: 1240,
+
+  stories: [
+    {
+      name: "Veylora User",
+      text: "Welcome to Veylora! 🎉",
+      time: "Just now"
+    }
+  ],
+
+  channels: [
+    {
+      name: "Veylora Creators",
+      description: "Creator news and updates",
+      followers: 1280
+    }
+  ],
+
+  messages: [
+    {
+      from: "Veylora",
+      text: "Welcome to Veylora 👋",
+      time: "Now"
+    }
+  ]
+};
 
 const navigation = [
   ["home", "Home"],
+  ["chat", "Chat"],
   ["calls", "Calls"],
   ["stories", "Stories"],
   ["channels", "Channels"],
@@ -54,18 +44,42 @@ const navigation = [
   ["admin", "Admin"]
 ];
 
-const app = document.getElementById("app");
+function saveState() {
+  localStorage.setItem(
+    "veylora_state",
+    JSON.stringify(state)
+  );
+}
 
-function renderShell(active, content) {
-  app.innerHTML = `
+function loadState() {
+  try {
+    const saved = localStorage.getItem("veylora_state");
+
+    if (saved) {
+      Object.assign(
+        state,
+        JSON.parse(saved)
+      );
+    }
+  } catch {
+    console.log("Local state could not be loaded.");
+  }
+}
+
+function shell(active, content) {
+  document.getElementById("app").innerHTML = `
     <header class="topbar">
       <div class="brand">
         <div class="logo">V</div>
 
         <div>
           <strong>Veylora</strong>
-          <small>AI • Chat • Create</small>
+          <small>Connect • Create • Share</small>
         </div>
+      </div>
+
+      <div class="user-pill">
+        ${escapeHtml(state.user.name)}
       </div>
     </header>
 
@@ -85,10 +99,19 @@ function renderShell(active, content) {
   `;
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function homePage() {
-  renderShell("home", `
+  shell("home", `
     <section class="hero">
-      <div class="hero-content">
+      <div>
         <span class="eyebrow">VEY LORA</span>
 
         <h1>
@@ -99,44 +122,47 @@ function homePage() {
 
         <p>
           Messaging, free voice and video calls,
-          Stories, Status, Channels and powerful AI.
+          Stories, Status, Channels and AI.
         </p>
 
         <div class="actions">
-          <button class="primary" onclick="showPage('calls')">
-            Open Calls
+          <button class="primary"
+            onclick="showPage('chat')">
+            Open Chat
           </button>
 
-          <button onclick="showPage('premium')">
-            View Premium
+          <button
+            onclick="showPage('ai')">
+            Open AI
           </button>
         </div>
       </div>
 
       <div class="credit-card">
         <small>AI CREDITS</small>
-        <strong>1,240</strong>
+        <strong>${state.aiCredits}</strong>
         <span>available</span>
       </div>
     </section>
 
     <section>
-      <h2>Free for everyone</h2>
+      <h2>Veylora features</h2>
 
       <div class="feature-grid">
-        ${features.map(([icon, name]) => `
+        ${[
+          ["💬", "Messaging"],
+          ["📞", "Voice Calls"],
+          ["🎥", "Video Calls"],
+          ["📸", "Stories"],
+          ["🟢", "Status"],
+          ["📢", "Channels"],
+          ["🤖", "AI"],
+          ["💎", "Premium"]
+        ].map(([icon, title]) => `
           <article class="card">
             <div class="feature-icon">${icon}</div>
-
-            <h3>${name}</h3>
-
-            <span class="free">
-              FREE
-            </span>
-
-            <p>
-              No Premium subscription required.
-            </p>
+            <h3>${title}</h3>
+            <p>Open ${title}</p>
           </article>
         `).join("")}
       </div>
@@ -144,23 +170,92 @@ function homePage() {
   `);
 }
 
-function callsPage() {
-  renderShell("calls", `
+function chatPage() {
+  shell("chat", `
     <section class="panel">
-      <h2>Voice & Video Calls</h2>
+      <h2>Messages</h2>
+
+      <div class="messages">
+        ${state.messages.map(message => `
+          <div class="message">
+            <strong>${escapeHtml(message.from)}</strong>
+            <p>${escapeHtml(message.text)}</p>
+            <small>${escapeHtml(message.time)}</small>
+          </div>
+        `).join("")}
+      </div>
+
+      <form onsubmit="sendMessage(event)">
+        <input
+          id="messageInput"
+          autocomplete="off"
+          placeholder="Write a message..."
+          required>
+
+        <button class="primary">
+          Send
+        </button>
+      </form>
+    </section>
+  `);
+}
+
+window.sendMessage = function(event) {
+  event.preventDefault();
+
+  const input =
+    document.getElementById("messageInput");
+
+  const text = input.value.trim();
+
+  if (!text) return;
+
+  state.messages.push({
+    from: "You",
+    text,
+    time: "Just now"
+  });
+
+  saveState();
+
+  chatPage();
+
+  setTimeout(() => {
+    state.messages.push({
+      from: "Veylora AI",
+      text: "Message received. Connect a production messaging backend for real-time delivery.",
+      time: "Now"
+    });
+
+    saveState();
+
+    if (document.getElementById("messageInput")) {
+      chatPage();
+    }
+  }, 500);
+};
+
+function callsPage() {
+  shell("calls", `
+    <section class="panel">
+      <h2>Calls</h2>
 
       <p>
-        Voice and video calls are free.
+        Voice and video calling interface.
       </p>
 
       <div class="call-grid">
-        <button class="call-card" onclick="demo('Voice call')">
+        <button
+          class="call-card"
+          onclick="startCall('voice')">
           <span>📞</span>
           <strong>Voice Call</strong>
           <small>FREE</small>
         </button>
 
-        <button class="call-card" onclick="demo('Video call')">
+        <button
+          class="call-card"
+          onclick="startCall('video')">
           <span>🎥</span>
           <strong>Video Call</strong>
           <small>FREE</small>
@@ -168,66 +263,137 @@ function callsPage() {
       </div>
 
       <div class="notice">
-        Real-time calls require the production calling
-        backend/service to be connected.
+        The interface is ready. Real-time
+        calling requires a production WebRTC/
+        calling backend.
       </div>
     </section>
   `);
 }
 
+window.startCall = function(type) {
+  const label =
+    type === "video"
+      ? "Video call"
+      : "Voice call";
+
+  alert(
+    `${label} interface opened.\n\n` +
+    "Connect your production WebRTC service " +
+    "to establish real calls."
+  );
+};
+
 function storiesPage() {
-  renderShell("stories", `
+  shell("stories", `
     <section class="panel">
       <h2>Stories & Status</h2>
 
       <p>
-        Share photos, videos and updates for free.
+        Create a story or status update.
       </p>
 
-      <div class="actions">
-        <button class="primary"
-          onclick="demo('Create Story')">
-          ＋ Post Story — FREE
-        </button>
+      <form onsubmit="createStory(event)">
+        <textarea
+          id="storyText"
+          placeholder="What's happening?"
+          required></textarea>
 
-        <button
-          onclick="demo('Create Status')">
-          ＋ Post Status — FREE
+        <button class="primary">
+          📸 Post Story — FREE
         </button>
-      </div>
+      </form>
 
-      <div class="story-card">
-        <strong>Your Story</strong>
-        <small>FREE</small>
+      <div class="stories-list">
+        ${state.stories.map(story => `
+          <article class="story-card">
+            <strong>
+              ${escapeHtml(story.name)}
+            </strong>
+
+            <p>
+              ${escapeHtml(story.text)}
+            </p>
+
+            <small>
+              ${escapeHtml(story.time)}
+            </small>
+          </article>
+        `).join("")}
       </div>
     </section>
   `);
 }
 
+window.createStory = function(event) {
+  event.preventDefault();
+
+  const input =
+    document.getElementById("storyText");
+
+  const text = input.value.trim();
+
+  if (!text) return;
+
+  state.stories.unshift({
+    name: state.user.name,
+    text,
+    time: "Just now"
+  });
+
+  saveState();
+
+  storiesPage();
+};
+
 function channelsPage() {
-  renderShell("channels", `
+  shell("channels", `
     <section class="panel">
       <h2>Channels</h2>
 
-      <p>
-        Create, follow and publish to Channels for free.
-      </p>
-
       <button
         class="primary"
-        onclick="demo('Create Channel')">
+        onclick="createChannel()">
         ＋ Create Channel — FREE
       </button>
 
-      <div class="channel-card">
-        <strong>Veylora Creators</strong>
-        <small>
-          Latest creator updates
-        </small>
+      <div class="channel-list">
+        ${state.channels.map(channel => `
+          <article class="channel-card">
+            <h3>
+              ${escapeHtml(channel.name)}
+            </h3>
+
+            <p>
+              ${escapeHtml(channel.description)}
+            </p>
+
+            <small>
+              ${channel.followers} followers
+            </small>
+          </article>
+        `).join("")}
       </div>
     </section>
   `);
 }
+
+window.createChannel = function() {
+  const name =
+    prompt("Enter your channel name:");
+
+  if (!name || !name.trim()) return;
+
+  state.channels.unshift({
+    name: name.trim(),
+    description: "New Veylora channel",
+    followers: 0
+  });
+
+  saveState();
+
+  channelsPage();
+};
 
 function aiPage() {
   const tools = [
@@ -235,63 +401,138 @@ function aiPage() {
     "Text → Image",
     "Text → Video",
     "Image → Video",
-    "Video → Video",
     "AI Voice",
     "AI Photo Edit",
     "AI Video Edit"
   ];
 
-  renderShell("ai", `
+  shell("ai", `
     <section class="panel">
-      <h2>AI Creation Center</h2>
+      <h2>Veylora AI</h2>
 
-      <p>
-        Powerful AI tools connected through the secure
-        backend in production.
-      </p>
+      <div class="ai-balance">
+        <strong>${state.aiCredits}</strong>
+        <span>AI credits</span>
+      </div>
 
       <div class="ai-grid">
         ${tools.map(tool => `
           <button
             class="ai-tool"
-            onclick="demo('${tool}')">
-
-            <strong>${tool}</strong>
-
-            <small>
-              Open tool
-            </small>
+            onclick="useAI('${escapeHtml(tool)}')">
+            <strong>${escapeHtml(tool)}</strong>
+            <small>Use AI</small>
           </button>
         `).join("")}
       </div>
 
       <textarea
-        placeholder="Describe what you want Veylora AI to create...">
+        id="aiPrompt"
+        placeholder="Tell Veylora AI what you want...">
       </textarea>
 
       <button
         class="primary"
-        onclick="demo('AI generation')">
+        onclick="generateAI()">
         ✨ Generate
       </button>
+
+      <div id="aiResult"></div>
     </section>
   `);
 }
 
+window.useAI = function(tool) {
+  alert(
+    `${tool}\n\n` +
+    "The UI is ready. Connect your secure " +
+    "server-side AI provider to generate real content."
+  );
+};
+
+window.generateAI = function() {
+  const input =
+    document.getElementById("aiPrompt");
+
+  const result =
+    document.getElementById("aiResult");
+
+  const prompt = input.value.trim();
+
+  if (!prompt) {
+    alert("Enter a prompt first.");
+    return;
+  }
+
+  if (state.aiCredits < 1) {
+    alert("You have no AI credits remaining.");
+    return;
+  }
+
+  state.aiCredits -= 1;
+
+  saveState();
+
+  result.innerHTML = `
+    <div class="notice">
+      <strong>AI request created</strong>
+      <p>
+        ${escapeHtml(prompt)}
+      </p>
+        Connect the production AI backend
+        to return the generated result.
+    </div>
+  `;
+
+  aiPage();
+};
+
 function premiumPage() {
-  renderShell("premium", `
+  const plans = [
+    {
+      name: "Go",
+      price: "₦10,000",
+      features: [
+        "More AI credits",
+        "Faster processing"
+      ]
+    },
+    {
+      name: "Pro",
+      price: "₦30,000",
+      trial: "2 months eligible trial",
+      features: [
+        "Everything in Go",
+        "Advanced AI",
+        "Higher AI limits",
+        "Priority processing"
+      ]
+    },
+    {
+      name: "Ultra",
+      price: "₦50,000",
+      trial: "7-day eligible trial",
+      features: [
+        "Everything in Pro",
+        "Highest AI priority",
+        "Highest AI allowance",
+        "Ultra AI tools"
+      ]
+    }
+  ];
+
+  shell("premium", `
     <section class="panel">
       <h2>Premium</h2>
 
       <p>
-        Basic communication remains free.
-        Premium provides advanced AI and premium tools.
+        Premium plans unlock advanced AI and
+        additional services.
       </p>
 
       <div class="plans">
         ${plans.map(plan => `
           <article class="plan-card">
-
             <h3>${plan.name}</h3>
 
             <div class="price">
@@ -301,7 +542,9 @@ function premiumPage() {
 
             ${
               plan.trial
-                ? `<div class="trial">${plan.trial}</div>`
+                ? `<div class="trial">
+                    ${plan.trial}
+                   </div>`
                 : ""
             }
 
@@ -313,19 +556,32 @@ function premiumPage() {
 
             <button
               class="primary full"
-              onclick="demo('${plan.name} checkout')">
-              Get ${plan.name}
+              onclick="startCheckout('${plan.name}')">
+              Choose ${plan.name}
             </button>
-
           </article>
         `).join("")}
+      </div>
+
+      <div class="notice">
+        Production payment entitlement must be
+        verified server-side. Never put private
+        payment credentials in this APK.
       </div>
     </section>
   `);
 }
 
+window.startCheckout = function(plan) {
+  alert(
+    `${plan} selected.\n\n` +
+    "Connect your secure payment provider " +
+    "backend to create the checkout session."
+  );
+};
+
 function adminPage() {
-  renderShell("admin", `
+  shell("admin", `
     <section class="panel">
       <h2>Admin Dashboard</h2>
 
@@ -336,39 +592,34 @@ function adminPage() {
         </article>
 
         <article>
-          <small>Active Users</small>
+          <small>Active</small>
           <strong>45,320</strong>
-        </article>
-
-        <article>
-          <small>Revenue</small>
-          <strong>₦12.5M</strong>
         </article>
 
         <article>
           <small>AI Credits</small>
           <strong>18.2M</strong>
         </article>
+
+        <article>
+          <small>Stories</small>
+          <strong>${state.stories.length}</strong>
+        </article>
       </div>
 
       <div class="notice">
-        Production admin actions must be protected by
-        backend RBAC and audit logging.
+        Admin authorization must be enforced
+        on the server. Do not rely on this
+        frontend screen for security.
       </div>
     </section>
   `);
 }
 
-window.demo = function (name) {
-  alert(
-    name +
-    " demo — production service is not connected yet."
-  );
-};
-
-window.showPage = function (page) {
+window.showPage = function(page) {
   const pages = {
     home: homePage,
+    chat: chatPage,
     calls: callsPage,
     stories: storiesPage,
     channels: channelsPage,
@@ -379,9 +630,8 @@ window.showPage = function (page) {
 
   if (pages[page]) {
     pages[page]();
-  } else {
-    homePage();
   }
 };
 
+loadState();
 showPage("home");
