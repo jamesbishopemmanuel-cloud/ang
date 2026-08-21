@@ -1,15 +1,106 @@
-- name: Inspect build output
-  run: |
-    echo "Build output:"
-    find dist -maxdepth 5 -type f -print 2>/dev/null || true
+name: Veylora Backend
 
-- name: Verify build
-  run: |
-    if [ -d dist ]; then
-      echo "===================================="
-      echo "Veylora backend build PASSED"
-      echo "===================================="
-    else
-      echo "ERROR: dist directory was not created."
-      exit 1
-    fi
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Build Veylora Backend
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: veylora
+          POSTGRES_PASSWORD: veylora_password
+          POSTGRES_DB: veylora
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U veylora -d veylora"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgresql://veylora:veylora_password@localhost:5432/veylora
+      JWT_SECRET: github-actions-development-secret
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Show repository structure
+        run: |
+          echo "Repository:"
+          pwd
+          echo "Root files:"
+          ls -la
+          echo "Source:"
+          ls -la src || true
+          echo "Prisma:"
+          ls -la prisma || true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check Node and npm
+        run: |
+          node --version
+          npm --version
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Force Prisma 6
+        run: npm install --save-dev prisma@6.15.0
+
+      - name: Install matching Prisma Client
+        run: npm install @prisma/client@6.15.0
+
+      - name: Check Prisma version
+        run: npx prisma --version
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Build application
+        run: npm run build
+
+      - name: Inspect build output
+        run: |
+          echo "===================================="
+          echo "Build output:"
+          echo "===================================="
+
+          if [ -d dist ]; then
+            find dist -maxdepth 5 -type f -print
+          else
+            echo "No dist directory found."
+          fi
+
+      - name: Verify build
+        run: |
+          if [ -d dist ] && [ "$(find dist -type f | wc -l)" -gt 0 ]; then
+            echo "===================================="
+            echo "Veylora backend build PASSED"
+            echo "===================================="
+          else
+            echo "ERROR: TypeScript did not produce build files."
+            exit 1
+          fi
