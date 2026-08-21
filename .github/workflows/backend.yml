@@ -40,29 +40,32 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show repository structure
-        run: |
-          echo "Repository:"
-          pwd
-          echo "Root files:"
-          ls -la
-          echo "src:"
-          ls -la src || true
-          echo "prisma:"
-          ls -la prisma || true
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Check Node.js
+      - name: Check project files
         run: |
-          node --version
-          npm --version
+          echo "Repository:"
+          pwd
+          ls -la
+          echo "package.json:"
+          cat package.json
+          echo "Prisma:"
+          ls -la prisma
 
       - name: Install dependencies
         run: npm install
+
+      - name: Force Prisma 6
+        run: npm install --save-dev prisma@6.15.0
+
+      - name: Install matching Prisma Client
+        run: npm install @prisma/client@6.15.0
+
+      - name: Check Prisma version
+        run: npx prisma --version
 
       - name: Generate Prisma client
         run: npx prisma generate
@@ -70,10 +73,12 @@ jobs:
       - name: Validate Prisma schema
         run: npx prisma validate
 
-      - name: Build project
+      - name: Build application
         run: npm run build
 
       - name: Verify build
         run: |
           test -f dist/server.js
-          echo "Veylora backend build passed successfully."
+          echo "===================================="
+          echo "Veylora backend build PASSED"
+          echo "===================================="
