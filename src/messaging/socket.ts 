@@ -1,0 +1,98 @@
+import { Server, Socket } from "socket.io";
+import { verifyToken } from "../auth/jwt.js";
+
+interface MessagePayload {
+  receiverId: string;
+  message: string;
+}
+
+export function setupMessaging(io: Server) {
+  io.use((socket, next) => {
+    try {
+      const token =
+        socket.handshake.auth?.token;
+
+      if (!token) {
+        return next(
+          new Error("Authentication required")
+        );
+      }
+
+      const user =
+        verifyToken(token);
+
+      socket.data.user = user;
+
+      next();
+    } catch {
+      next(
+        new Error("Invalid authentication")
+      );
+    }
+  });
+
+  io.on("connection", (socket: Socket) => {
+    const userId =
+      socket.data.user.userId;
+
+    socket.join(`user:${userId}`);
+
+    socket.on(
+      "message:send",
+      async (data: MessagePayload) => {
+
+        if (
+          !data?.receiverId ||
+          !data?.message?.trim()
+        ) {
+          return;
+        }
+
+        const message = {
+          id: crypto.randomUUID(),
+          senderId: userId,
+          receiverId: data.receiverId,
+          message: data.message.trim(),
+          createdAt: new Date().toISOString()
+        };
+
+        io.to(`user:${data.receiverId}`)
+          .emit(
+            "message:new",
+            message
+          );
+
+        socket.emit(
+          "message:sent",
+          message
+        );
+      }
+    );
+
+    socket.on(
+      "message:typing",
+      (receiverId: string) => {
+        io.to(`user:${receiverId}`)
+          .emit("message:typing", {
+            senderId: userId
+          });
+      }
+    );
+
+    socket.on(
+      "message:read",
+      (senderId: string) => {
+        io.to(`user:${senderId}`)
+          .emit("message:read", {
+            readerId: userId
+          });
+      }
+    );
+
+    socket.on("disconnect", () => {
+      console.log(
+        `User disconnected: ${userId}`
+      );
+    });
+  });
+}
