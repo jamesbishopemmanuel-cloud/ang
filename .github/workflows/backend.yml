@@ -1,0 +1,58 @@
+name: Veylora Backend
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: veylora
+          POSTGRES_PASSWORD: veylora_password
+          POSTGRES_DB: veylora
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U veylora -d veylora"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Build backend
+        run: npm run build
+        env:
+          DATABASE_URL: postgresql://veylora:veylora_password@localhost:5432/veylora
+          JWT_SECRET: github-actions-test-secret
+
+      - name: Backend build complete
+        run: echo "Veylora backend build passed."
