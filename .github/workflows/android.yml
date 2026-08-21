@@ -4,24 +4,25 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
 
 
 jobs:
 
-  android-build:
+  build-android:
 
     runs-on: ubuntu-latest
 
 
     steps:
 
+      # Checkout repository
       - name: Checkout code
         uses: actions/checkout@v4
 
 
 
+      # Node setup
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -29,6 +30,7 @@ jobs:
 
 
 
+      # Java for Android
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
@@ -37,60 +39,73 @@ jobs:
 
 
 
-      - name: Install npm packages
+      # Install packages
+      - name: Install dependencies
         run: |
           npm install
 
 
 
+      # Build Veylora web app
       - name: Build web app
         run: |
           npm run build
 
 
 
+      # Install Capacitor
       - name: Install Capacitor
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
 
 
 
+      # Check Capacitor config
       - name: Check Capacitor config
         run: |
-          ls -la
 
-          if [ -f capacitor.config.ts ] || [ -f capacitor.config.json ]; then
-            echo "Capacitor config found"
+          if [ -f capacitor.config.ts ]; then
+            echo "Found capacitor.config.ts"
+
+          elif [ -f capacitor.config.json ]; then
+            echo "Found capacitor.config.json"
+
           else
-            echo "ERROR: capacitor.config file missing"
+            echo "Missing Capacitor config"
             exit 1
+
           fi
 
 
 
-      - name: Create Android project
+      # Remove broken Android folder and recreate
+      - name: Recreate Android project
         run: |
 
-          if [ ! -d android ]; then
+          if [ -d android ]; then
 
-            echo "Creating Android project..."
+            echo "Removing old Android folder..."
 
-            npx cap add android
-
-          else
-
-            echo "Android folder already exists"
+            rm -rf android
 
           fi
 
 
+          echo "Creating fresh Android project..."
 
+          npx cap add android
+
+
+
+      # Sync files
       - name: Sync Capacitor Android
         run: |
+
           npx cap sync android
 
 
 
+      # Verify Android
       - name: Verify Android project
         run: |
 
@@ -98,24 +113,24 @@ jobs:
 
           ls -la android
 
-          test -d android
-
           test -f android/gradlew
 
-          echo "Android project found successfully"
+          chmod +x android/gradlew
+
+          echo "Android project ready"
 
 
 
+      # Build APK
       - name: Build APK
         working-directory: android
         run: |
-
-          chmod +x gradlew
 
           ./gradlew assembleDebug --no-daemon
 
 
 
+      # Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
