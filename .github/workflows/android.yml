@@ -1,66 +1,58 @@
-name: Veylora Android APK
+name: Build Veylora Android APK
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
-
-permissions:
-  contents: read
+  workflow_dispatch:
 
 jobs:
-  android:
-    name: Build Veylora Android APK
+  android-build:
+
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
-      - name: Setup Java 21
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
 
-      - name: Check Java
+      - name: Install dependencies
         run: |
-          java -version
-          javac -version
+          npm install
 
-      - name: Install npm dependencies
-        run: npm install
 
-      - name: Build web application
-        run: npm run build
-
-      - name: Verify web build
+      - name: Build web app
         run: |
-          if [ ! -d dist ]; then
-            echo "ERROR: dist directory was not created."
-            exit 1
-          fi
+          npm run build
 
-          echo "Web build successful."
-          find dist -maxdepth 3 -type f -print
 
-      - name: Check Capacitor
-        run: npx cap --version
+      - name: Install Capacitor
+        run: |
+          npm install @capacitor/core @capacitor/cli
 
-      - name: Add Android platform if missing
+
+      - name: Create Android project if missing
         run: |
           if [ ! -d android ]; then
+            echo "Android folder missing. Creating..."
             npx cap add android
+          else
+            echo "Android folder exists."
           fi
 
+
       - name: Sync Capacitor Android
-        run: npx cap sync android
+        run: |
+          npx cap sync android
+
 
       - name: Check Android project
         run: |
@@ -68,46 +60,23 @@ jobs:
           test -f android/gradlew
           echo "Android project found."
 
-      - name: Make Gradle executable
-        run: chmod +x android/gradlew
 
-      - name: Show Java and Gradle versions
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+
+      - name: Build APK
         working-directory: android
         run: |
-          java -version
-          ./gradlew --version
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
-      - name: Clean Android project
-        working-directory: android
-        run: ./gradlew clean --no-daemon
-
-      - name: Build Debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
-
-      - name: Locate APK
-        run: |
-          echo "===================================="
-          echo "APK FILES"
-          echo "===================================="
-
-          find android -type f -name "*.apk" -print
-
-      - name: Verify APK exists
-        run: |
-          APK_COUNT=$(find android/app/build/outputs/apk/debug -type f -name "*.apk" 2>/dev/null | wc -l)
-
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: No APK was generated."
-            exit 1
-          fi
-
-          echo "APK generated successfully."
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: veylora-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 30
+          name: Veylora-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
