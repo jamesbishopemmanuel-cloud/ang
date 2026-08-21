@@ -1,262 +1,116 @@
-name: Veylora Android Release APK
+name: Veylora Android APK
 
 on:
   workflow_dispatch:
-
   push:
     branches:
       - main
 
-
 jobs:
-
-  build-release:
-
+  android:
     runs-on: ubuntu-latest
-
 
     steps:
 
-      # --------------------------------------------------
-      # 1. Download repository
-      # --------------------------------------------------
-
+      # 1. Get the Veylora source code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-
-      # --------------------------------------------------
-      # 2. Node.js
-      # --------------------------------------------------
-
-      - name: Setup Node
+      # 2. Install Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-
-      # --------------------------------------------------
-      # 3. Java 21
-      # --------------------------------------------------
-
+      # 3. Install Java for Android/Gradle
       - name: Setup Java
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 21
 
-
-      # --------------------------------------------------
-      # 4. Install JavaScript dependencies
-      # --------------------------------------------------
-
+      # 4. Install Veylora dependencies
       - name: Install dependencies
         run: |
           npm install
 
-
-      # --------------------------------------------------
-      # 5. Build Veylora web application
-      # --------------------------------------------------
-
+      # 5. Build the web application
       - name: Build web application
         run: |
           npm run build
 
-
-      # --------------------------------------------------
       # 6. Install Capacitor
-      # --------------------------------------------------
-
-      - name: Install Capacitor Android
+      - name: Install Capacitor
         run: |
           npm install @capacitor/core @capacitor/cli @capacitor/android
 
-
-      # --------------------------------------------------
-      # 7. Create Android project if necessary
-      # --------------------------------------------------
-
-      - name: Create Android project
+      # 7. Remove incomplete Android project
+      - name: Remove incomplete Android project
         run: |
-
-          if [ ! -d android ]; then
-
-            echo "Android project does not exist."
-
-            npx cap add android
-
-          else
-
-            echo "Android project already exists."
-
+          if [ -d android ]; then
+            echo "Removing incomplete Android project..."
+            rm -rf android
           fi
 
+      # 8. Create a complete Android project
+      - name: Create Android project
+        run: |
+          echo "Creating Android project..."
 
-      # --------------------------------------------------
-      # 8. Synchronize Capacitor
-      # --------------------------------------------------
+          npx cap add android
 
+          echo "Android project created."
+
+      # 9. Synchronize Veylora with Android
       - name: Sync Capacitor
         run: |
           npx cap sync android
 
-
-      # --------------------------------------------------
-      # 9. Verify Gradle wrapper
-      # --------------------------------------------------
-
+      # 10. Check generated Android project
       - name: Verify Android project
         run: |
-
-          echo "Checking Android project..."
+          echo "Checking generated Android project..."
 
           test -d android
-
+          test -d android/app
           test -f android/gradlew
+          test -f android/settings.gradle
 
           chmod +x android/gradlew
 
-          echo "Android project is ready."
+          echo "===================================="
+          echo "Android project created successfully"
+          echo "===================================="
 
+          ls -la android
 
-      # --------------------------------------------------
-      # 10. Decode release keystore
-      # --------------------------------------------------
-
-      - name: Decode release keystore
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        run: |
-
-          if [ -z "$KEYSTORE_BASE64" ]; then
-
-            echo "ERROR: KEYSTORE_BASE64 GitHub Secret is missing."
-
-            exit 1
-
-          fi
-
-
-          echo "$KEYSTORE_BASE64" | base64 --decode > android/veylora-release.jks
-
-
-          if [ ! -f android/veylora-release.jks ]; then
-
-            echo "ERROR: Keystore could not be created."
-
-            exit 1
-
-          fi
-
-
-          echo "Release keystore decoded successfully."
-
-
-      # --------------------------------------------------
-      # 11. Create temporary signing properties
-      # --------------------------------------------------
-
-      - name: Create signing properties
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: |
-
-          if [ -z "$KEYSTORE_PASSWORD" ]; then
-            echo "ERROR: KEYSTORE_PASSWORD is missing."
-            exit 1
-          fi
-
-          if [ -z "$KEY_ALIAS" ]; then
-            echo "ERROR: KEY_ALIAS is missing."
-            exit 1
-          fi
-
-          if [ -z "$KEY_PASSWORD" ]; then
-            echo "ERROR: KEY_PASSWORD is missing."
-            exit 1
-          fi
-
-
-          cat > android/keystore.properties <<EOF
-          storeFile=veylora-release.jks
-          storePassword=$KEYSTORE_PASSWORD
-          keyAlias=$KEY_ALIAS
-          keyPassword=$KEY_PASSWORD
-          EOF
-
-
-          echo "Signing properties created."
-
-
-      # --------------------------------------------------
-      # 12. Build signed release APK
-      # --------------------------------------------------
-
-      - name: Build signed release APK
+      # 11. Build debug APK
+      - name: Build debug APK
         working-directory: android
         run: |
-
           chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
-          ./gradlew assembleRelease --no-daemon
-
-
-      # --------------------------------------------------
-      # 13. Verify release APK
-      # --------------------------------------------------
-
-      - name: Verify release APK
+      # 12. Check APK
+      - name: Verify APK
         run: |
-
-          APK="android/app/build/outputs/apk/release/app-release.apk"
-
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
 
           if [ ! -f "$APK" ]; then
-
-            echo "ERROR: Release APK was not created."
-
+            echo "ERROR: APK was not created."
             exit 1
-
           fi
 
-
-          echo "======================================"
-
-          echo "Veylora release APK created successfully"
-
-          echo "======================================"
+          echo "===================================="
+          echo "Veylora APK BUILD SUCCESSFUL"
+          echo "===================================="
 
           ls -lh "$APK"
 
-
-      # --------------------------------------------------
-      # 14. Upload signed APK
-      # --------------------------------------------------
-
-      - name: Upload signed APK
+      # 13. Upload APK to GitHub Actions
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-
-          name: Veylora-release-apk
-
-          path: android/app/build/outputs/apk/release/app-release.apk
-
+          name: Veylora-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-
-
-      # --------------------------------------------------
-      # 15. Clean sensitive files
-      # --------------------------------------------------
-
-      - name: Remove signing files
-        if: always()
-        run: |
-
-          rm -f android/veylora-release.jks
-
-          rm -f android/keystore.properties
-
-          echo "Signing files removed."
