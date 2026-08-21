@@ -22,7 +22,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Setup Java 21
         uses: actions/setup-java@v4
@@ -62,13 +61,10 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x android/gradlew
 
-      - name: Show Android Java configuration
+      - name: Show Java and Gradle versions
+        working-directory: android
         run: |
-          echo "Java:"
           java -version
-          echo ""
-          echo "Gradle:"
-          cd android
           ./gradlew --version
 
       - name: Clean Android project
