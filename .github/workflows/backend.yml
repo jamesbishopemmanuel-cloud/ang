@@ -31,10 +31,6 @@ jobs:
           --health-timeout=5s
           --health-retries=5
 
-    defaults:
-      run:
-        working-directory: backend
-
     env:
       DATABASE_URL: postgresql://veylora:veylora_password@localhost:5432/veylora
       JWT_SECRET: github-actions-development-secret
@@ -44,37 +40,40 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Show repository structure
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Repository files:"
+          ls -la
+          echo "Source directory:"
+          ls -la src || true
+          echo "Prisma directory:"
+          ls -la prisma || true
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Check Node and npm versions
+      - name: Check Node and npm
         run: |
           node --version
           npm --version
 
-      - name: Install backend dependencies
+      - name: Install dependencies
         run: npm install
 
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Validate Prisma schema
+      - name: Validate Prisma
         run: npx prisma validate
 
       - name: Build backend
         run: npm run build
 
-      - name: Verify backend build
+      - name: Verify build
         run: |
           test -f dist/server.js
-          echo "Veylora backend build completed successfully."
-
-      - name: Backend summary
-        run: |
-          echo "===================================="
-          echo "Veylora Backend: BUILD PASSED"
-          echo "Node.js: $(node --version)"
-          echo "npm: $(npm --version)"
-          echo "===================================="
+          echo "Veylora backend build passed successfully."
