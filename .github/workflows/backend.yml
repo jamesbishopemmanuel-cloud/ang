@@ -42,13 +42,13 @@ jobs:
 
       - name: Show repository structure
         run: |
-          echo "Current directory:"
+          echo "Repository:"
           pwd
-          echo "Repository files:"
+          echo "Root files:"
           ls -la
-          echo "Source directory:"
+          echo "src:"
           ls -la src || true
-          echo "Prisma directory:"
+          echo "prisma:"
           ls -la prisma || true
 
       - name: Setup Node.js
@@ -56,7 +56,7 @@ jobs:
         with:
           node-version: 22
 
-      - name: Check Node and npm
+      - name: Check Node.js
         run: |
           node --version
           npm --version
@@ -67,10 +67,10 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
 
-      - name: Validate Prisma
+      - name: Validate Prisma schema
         run: npx prisma validate
 
-      - name: Build backend
+      - name: Build project
         run: npm run build
 
       - name: Verify build
