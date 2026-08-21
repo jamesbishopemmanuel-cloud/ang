@@ -8,8 +8,12 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   backend:
+    name: Build Veylora Backend
     runs-on: ubuntu-latest
 
     services:
@@ -22,37 +26,55 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U veylora -d veylora"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
+          --health-cmd="pg_isready -U veylora -d veylora"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
 
     defaults:
       run:
         working-directory: backend
 
+    env:
+      DATABASE_URL: postgresql://veylora:veylora_password@localhost:5432/veylora
+      JWT_SECRET: github-actions-development-secret
+      NODE_ENV: test
+
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: backend/package-lock.json
 
-      - name: Install dependencies
+      - name: Check Node and npm versions
+        run: |
+          node --version
+          npm --version
+
+      - name: Install backend dependencies
         run: npm install
 
       - name: Generate Prisma client
         run: npx prisma generate
 
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
       - name: Build backend
         run: npm run build
-        env:
-          DATABASE_URL: postgresql://veylora:veylora_password@localhost:5432/veylora
-          JWT_SECRET: github-actions-test-secret
 
-      - name: Backend build complete
-        run: echo "Veylora backend build passed."
+      - name: Verify backend build
+        run: |
+          test -f dist/server.js
+          echo "Veylora backend build completed successfully."
+
+      - name: Backend summary
+        run: |
+          echo "===================================="
+          echo "Veylora Backend: BUILD PASSED"
+          echo "Node.js: $(node --version)"
+          echo "npm: $(npm --version)"
+          echo "===================================="
