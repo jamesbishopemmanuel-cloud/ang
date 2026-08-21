@@ -1,3 +1,9 @@
-import type { CapacitorConfig } from '@capacitor/cli';
-const config: CapacitorConfig = { appId:'com.veylora.app', appName:'Veylora', webDir:'dist' };
+import type { CapacitorConfig } from "@capacitor/cli";
+
+const config: CapacitorConfig = {
+  appId: "com.veylora.app",
+  appName: "Veylora",
+  webDir: "dist"
+};
+
 export default config;
