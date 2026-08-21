@@ -1,0 +1,6 @@
+CREATE TABLE users(id TEXT PRIMARY KEY,phone_country TEXT NOT NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE subscriptions(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,plan_id TEXT NOT NULL,status TEXT NOT NULL,trial_ends_at TIMESTAMP,current_period_end TIMESTAMP);
+CREATE TABLE entitlements(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,plan_id TEXT NOT NULL,status TEXT NOT NULL,source_event_id TEXT UNIQUE,starts_at TIMESTAMP NOT NULL,ends_at TIMESTAMP);
+CREATE TABLE payments(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,provider TEXT NOT NULL,provider_transaction_id TEXT UNIQUE,merchant_reference TEXT UNIQUE NOT NULL,amount_minor BIGINT NOT NULL,currency TEXT NOT NULL,status TEXT NOT NULL);
+CREATE TABLE ai_usage(id TEXT PRIMARY KEY,user_id TEXT NOT NULL,generation_type TEXT NOT NULL,credits_used INTEGER NOT NULL,provider TEXT,model TEXT,status TEXT NOT NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE admin_audit_logs(id TEXT PRIMARY KEY,admin_user_id TEXT NOT NULL,action TEXT NOT NULL,target_id TEXT,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
