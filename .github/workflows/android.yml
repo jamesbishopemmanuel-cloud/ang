@@ -1,17 +1,18 @@
 name: Veylora Android APK Build
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 
 jobs:
 
-  android-build:
+  build-apk:
 
     runs-on: ubuntu-latest
+
 
     steps:
 
@@ -47,55 +48,43 @@ jobs:
           npm install @capacitor/core @capacitor/cli @capacitor/android
 
 
-      - name: Check Capacitor config
-        run: |
-
-          if [ -f capacitor.config.ts ] || [ -f capacitor.config.json ]; then
-            echo "Capacitor config found"
-          else
-            echo "Capacitor config missing"
-            exit 1
-          fi
-
-
-      - name: Remove old Android folder
+      - name: Create Android project
         run: |
 
           if [ -d android ]; then
-            echo "Removing incomplete Android folder"
+            echo "Removing old incomplete Android folder"
             rm -rf android
           fi
 
-
-      - name: Create fresh Android project
-        run: |
-
-          echo "Creating Android project..."
+          echo "Creating new Android project"
 
           npx cap add android
 
 
-      - name: Sync Android
+      - name: Sync Capacitor
         run: |
 
           npx cap sync android
 
 
-      - name: Check Android files
+      - name: Verify Android
         run: |
 
-          echo "Checking Android project..."
+          echo "Android files:"
 
           ls -la android
 
-          test -f android/gradlew
+          if [ ! -f android/gradlew ]; then
+            echo "gradlew missing"
+            exit 1
+          fi
 
           chmod +x android/gradlew
 
           echo "Android project ready"
 
 
-      - name: Build APK
+      - name: Build Debug APK
         working-directory: android
         run: |
 
@@ -106,6 +95,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
 
-          name: Veylora-debug-apk
+          name: Veylora-APK
 
           path: android/app/build/outputs/apk/debug/app-debug.apk
