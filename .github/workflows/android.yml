@@ -1,45 +1,125 @@
-- name: Check Capacitor setup
-  run: |
-    ls -la
-    test -f capacitor.config.ts || test -f capacitor.config.json
-    echo "Capacitor config found"
+name: Build Veylora Android APK
+
+on:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
 
 
-- name: Install Capacitor Android
-  run: |
-    npm install @capacitor/android
+jobs:
+
+  android-build:
+
+    runs-on: ubuntu-latest
 
 
-- name: Create Android project
-  run: |
+    steps:
 
-    if [ ! -d android ]; then
-
-      echo "Android folder not found"
-
-      npx cap add android
-
-    else
-
-      echo "Android folder already exists"
-
-    fi
+      - name: Checkout code
+        uses: actions/checkout@v4
 
 
-- name: Sync Android
-  run: |
-    npx cap sync android
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
 
 
-- name: Verify Android
-  run: |
 
-    ls -la
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
 
-    ls -la android
 
-    test -d android
 
-    test -f android/gradlew
+      - name: Install npm packages
+        run: |
+          npm install
 
-    echo "Android project found successfully"
+
+
+      - name: Build web app
+        run: |
+          npm run build
+
+
+
+      - name: Install Capacitor
+        run: |
+          npm install @capacitor/core @capacitor/cli @capacitor/android
+
+
+
+      - name: Check Capacitor config
+        run: |
+          ls -la
+
+          if [ -f capacitor.config.ts ] || [ -f capacitor.config.json ]; then
+            echo "Capacitor config found"
+          else
+            echo "ERROR: capacitor.config file missing"
+            exit 1
+          fi
+
+
+
+      - name: Create Android project
+        run: |
+
+          if [ ! -d android ]; then
+
+            echo "Creating Android project..."
+
+            npx cap add android
+
+          else
+
+            echo "Android folder already exists"
+
+          fi
+
+
+
+      - name: Sync Capacitor Android
+        run: |
+          npx cap sync android
+
+
+
+      - name: Verify Android project
+        run: |
+
+          echo "Checking Android files..."
+
+          ls -la android
+
+          test -d android
+
+          test -f android/gradlew
+
+          echo "Android project found successfully"
+
+
+
+      - name: Build APK
+        working-directory: android
+        run: |
+
+          chmod +x gradlew
+
+          ./gradlew assembleDebug --no-daemon
+
+
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+
+          name: Veylora-debug-apk
+
+          path: android/app/build/outputs/apk/debug/app-debug.apk
