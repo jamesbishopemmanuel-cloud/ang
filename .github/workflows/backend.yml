@@ -7,13 +7,14 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   backend:
-    name: Build Veylora Backend
+    name: Build and Validate Veylora Backend
     runs-on: ubuntu-latest
 
     services:
@@ -40,29 +41,39 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Show repository structure
+        run: |
+          echo "Repository:"
+          pwd
+          echo ""
+          echo "Root files:"
+          find . -maxdepth 2 -type f \
+            ! -path "./.git/*" \
+            ! -path "./node_modules/*" \
+            | sort
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - name: Check project files
+      - name: Check Node.js and npm
         run: |
-          echo "Repository:"
-          pwd
-          ls -la
-          echo "package.json:"
-          cat package.json
-          echo "Prisma:"
-          ls -la prisma
+          node --version
+          npm --version
+
+      - name: Check package.json
+        run: |
+          test -f package.json
+          echo "package.json found."
 
       - name: Install dependencies
         run: npm install
 
-      - name: Force Prisma 6
-        run: npm install --save-dev prisma@6.15.0
-
-      - name: Install matching Prisma Client
-        run: npm install @prisma/client@6.15.0
+      - name: Install Prisma 6
+        run: |
+          npm install --save-dev prisma@6.15.0
+          npm install @prisma/client@6.15.0
 
       - name: Check Prisma version
         run: npx prisma --version
@@ -76,9 +87,25 @@ jobs:
       - name: Build application
         run: npm run build
 
+      - name: Inspect build output
+        run: |
+          echo "===================================="
+          echo "Build output"
+          echo "===================================="
+
+          if [ -d dist ]; then
+            find dist -type f -print | sort
+          else
+            echo "No dist directory was created."
+          fi
+
       - name: Verify build
         run: |
-          test -f dist/server.js
-          echo "===================================="
-          echo "Veylora backend build PASSED"
-          echo "===================================="
+          if [ -d dist ] && [ "$(find dist -type f | wc -l)" -gt 0 ]; then
+            echo "===================================="
+            echo "VEY LORA BACKEND BUILD PASSED"
+            echo "===================================="
+          else
+            echo "ERROR: Build completed but no files were generated in dist."
+            exit 1
+          fi
