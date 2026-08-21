@@ -1,37 +1,295 @@
 import "./style.css";
 
+/*
+ * VEYLORA PRODUCTION FRONTEND
+ *
+ * This file talks to your production backend.
+ *
+ * Configure your backend URL with:
+ *
+ * VITE_API_URL=https://YOUR-BACKEND-DOMAIN.com
+ *
+ * For Capacitor/Android, you can also replace API_BASE_URL
+ * with your actual HTTPS backend URL.
+ */
+
+const API_BASE_URL =
+  (typeof import.meta !== "undefined" &&
+    import.meta.env &&
+    import.meta.env.VITE_API_URL) ||
+  "https://YOUR-BACKEND-DOMAIN.com";
+
 const state = {
   user: {
+    id: null,
     name: "Veylora User",
-    phone: "+234 800 000 0000"
+    phone: ""
   },
 
-  aiCredits: 1240,
+  token: localStorage.getItem("veylora_token") || "",
 
-  stories: [
-    {
-      name: "Veylora User",
-      text: "Welcome to Veylora! 🎉",
-      time: "Just now"
-    }
-  ],
+  aiCredits: 0,
 
-  channels: [
-    {
-      name: "Veylora Creators",
-      description: "Creator news and updates",
-      followers: 1280
-    }
-  ],
+  stories: [],
 
-  messages: [
-    {
-      from: "Veylora",
-      text: "Welcome to Veylora 👋",
-      time: "Now"
-    }
-  ]
+  channels: [],
+
+  messages: [],
+
+  selectedChatId: null,
+
+  loading: false
 };
+
+/* =========================================================
+   API
+========================================================= */
+
+async function api(path, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
+
+  if (state.token) {
+    headers.Authorization = `Bearer ${state.token}`;
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}${path}`,
+    {
+      ...options,
+      headers
+    }
+  );
+
+  let data = null;
+
+  try {
+    data = await response.json();
+  } catch {
+    data = {};
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      data.message ||
+      data.error ||
+      `Request failed (${response.status})`
+    );
+  }
+
+  return data;
+}
+
+/* =========================================================
+   UTILITIES
+========================================================= */
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function showError(error) {
+  console.error(error);
+
+  alert(
+    error?.message ||
+    "Something went wrong. Please try again."
+  );
+}
+
+function setToken(token) {
+  state.token = token || "";
+
+  if (state.token) {
+    localStorage.setItem(
+      "veylora_token",
+      state.token
+    );
+  } else {
+    localStorage.removeItem(
+      "veylora_token"
+    );
+  }
+}
+
+function formatTime(value) {
+  if (!value) return "Now";
+
+  try {
+    return new Date(value).toLocaleTimeString(
+      [],
+      {
+        hour: "2-digit",
+        minute: "2-digit"
+      }
+    );
+  } catch {
+    return "Now";
+  }
+}
+
+/* =========================================================
+   AUTH
+========================================================= */
+
+async function loadCurrentUser() {
+  if (!state.token) return false;
+
+  try {
+    const data = await api(
+      "/api/auth/me"
+    );
+
+    state.user = {
+      ...state.user,
+      ...(data.user || data)
+    };
+
+    return true;
+  } catch (error) {
+    console.warn(
+      "Authentication session expired.",
+      error
+    );
+
+    setToken("");
+    return false;
+  }
+}
+
+window.login = async function () {
+  const phone = prompt(
+    "Enter your phone number:"
+  );
+
+  if (!phone) return;
+
+  try {
+    const data = await api(
+      "/api/auth/request-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          phone
+        })
+      }
+    );
+
+    alert(
+      data.message ||
+      "OTP sent successfully."
+    );
+
+    const otp = prompt(
+      "Enter the OTP you received:"
+    );
+
+    if (!otp) return;
+
+    const verified = await api(
+      "/api/auth/verify-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          phone,
+          otp
+        })
+      }
+    );
+
+    setToken(
+      verified.token ||
+      verified.accessToken
+    );
+
+    state.user = {
+      ...state.user,
+      ...(verified.user || {})
+    };
+
+    await loadAppData();
+
+    showPage("home");
+
+  } catch (error) {
+    showError(error);
+  }
+};
+
+window.logout = function () {
+  setToken("");
+
+  state.user = {
+    id: null,
+    name: "Veylora User",
+    phone: ""
+  };
+
+  state.messages = [];
+
+  showPage("home");
+};
+
+/* =========================================================
+   DATA
+========================================================= */
+
+async function loadAppData() {
+  if (!state.token) return;
+
+  try {
+    const [
+      profile,
+      stories,
+      channels
+    ] = await Promise.all([
+      api("/api/auth/me"),
+      api("/api/stories"),
+      api("/api/channels")
+    ]);
+
+    state.user = {
+      ...state.user,
+      ...(profile.user || profile)
+    };
+
+    state.stories =
+      stories.stories ||
+      stories.data ||
+      stories ||
+      [];
+
+    state.channels =
+      channels.channels ||
+      channels.data ||
+      channels ||
+      [];
+
+    state.aiCredits =
+      Number(
+        profile.user?.aiCredits ??
+        profile.aiCredits ??
+        0
+      );
+
+  } catch (error) {
+    console.error(
+      "Could not load application data:",
+      error
+    );
+  }
+}
+
+/* =========================================================
+   LAYOUT
+========================================================= */
 
 const navigation = [
   ["home", "Home"],
@@ -44,53 +302,57 @@ const navigation = [
   ["admin", "Admin"]
 ];
 
-function saveState() {
-  localStorage.setItem(
-    "veylora_state",
-    JSON.stringify(state)
-  );
-}
-
-function loadState() {
-  try {
-    const saved = localStorage.getItem("veylora_state");
-
-    if (saved) {
-      Object.assign(
-        state,
-        JSON.parse(saved)
-      );
-    }
-  } catch {
-    console.log("Local state could not be loaded.");
-  }
-}
-
 function shell(active, content) {
   document.getElementById("app").innerHTML = `
     <header class="topbar">
+
       <div class="brand">
-        <div class="logo">V</div>
+
+        <div class="logo">
+          V
+        </div>
 
         <div>
           <strong>Veylora</strong>
-          <small>Connect • Create • Share</small>
+
+          <small>
+            Connect • Create • Share
+          </small>
         </div>
+
       </div>
 
       <div class="user-pill">
-        ${escapeHtml(state.user.name)}
+
+        ${
+          state.token
+            ? escapeHtml(
+                state.user.name ||
+                "Veylora User"
+              )
+            : `<button onclick="login()">
+                Login
+              </button>`
+        }
+
       </div>
+
     </header>
 
     <nav class="navigation">
-      ${navigation.map(([id, label]) => `
-        <button
-          class="${active === id ? "active" : ""}"
-          onclick="showPage('${id}')">
-          ${label}
-        </button>
-      `).join("")}
+
+      ${navigation.map(
+        ([id, label]) => `
+          <button
+            class="${active === id ? "active" : ""}"
+            onclick="showPage('${id}')">
+
+            ${label}
+
+          </button>
+        `
+      ).join("")}
+
     </nav>
 
     <main>
@@ -99,20 +361,22 @@ function shell(active, content) {
   `;
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
+/* =========================================================
+   HOME
+========================================================= */
 
 function homePage() {
-  shell("home", `
+  shell(
+    "home",
+    `
+
     <section class="hero">
+
       <div>
-        <span class="eyebrow">VEY LORA</span>
+
+        <span class="eyebrow">
+          VEYLORA
+        </span>
 
         <h1>
           Connect.<br>
@@ -121,12 +385,14 @@ function homePage() {
         </h1>
 
         <p>
-          Messaging, free voice and video calls,
-          Stories, Status, Channels and AI.
+          Messaging, voice and video calls,
+          Stories, Channels and AI.
         </p>
 
         <div class="actions">
-          <button class="primary"
+
+          <button
+            class="primary"
             onclick="showPage('chat')">
             Open Chat
           </button>
@@ -135,265 +401,837 @@ function homePage() {
             onclick="showPage('ai')">
             Open AI
           </button>
+
         </div>
+
       </div>
 
       <div class="credit-card">
-        <small>AI CREDITS</small>
-        <strong>${state.aiCredits}</strong>
-        <span>available</span>
+
+        <small>
+          AI CREDITS
+        </small>
+
+        <strong>
+          ${state.aiCredits}
+        </strong>
+
+        <span>
+          available
+        </span>
+
       </div>
+
     </section>
 
     <section>
-      <h2>Veylora features</h2>
+
+      <h2>
+        Veylora features
+      </h2>
 
       <div class="feature-grid">
+
         ${[
-          ["💬", "Messaging"],
-          ["📞", "Voice Calls"],
-          ["🎥", "Video Calls"],
-          ["📸", "Stories"],
-          ["🟢", "Status"],
-          ["📢", "Channels"],
-          ["🤖", "AI"],
-          ["💎", "Premium"]
-        ].map(([icon, title]) => `
-          <article class="card">
-            <div class="feature-icon">${icon}</div>
-            <h3>${title}</h3>
-            <p>Open ${title}</p>
-          </article>
-        `).join("")}
+          ["💬", "Messaging", "chat"],
+          ["📞", "Voice Calls", "calls"],
+          ["🎥", "Video Calls", "calls"],
+          ["📸", "Stories", "stories"],
+          ["📢", "Channels", "channels"],
+          ["🤖", "AI", "ai"],
+          ["💎", "Premium", "premium"]
+        ].map(
+          ([icon, title, page]) => `
+            <article
+              class="card"
+              onclick="showPage('${page}')">
+
+              <div class="feature-icon">
+                ${icon}
+              </div>
+
+              <h3>
+                ${title}
+              </h3>
+
+              <p>
+                Open ${title}
+              </p>
+
+            </article>
+          `
+        ).join("")}
+
       </div>
+
     </section>
-  `);
+  `
+  );
+}
+
+/* =========================================================
+   CHAT
+========================================================= */
+
+async function loadMessages() {
+  if (!state.token) return;
+
+  try {
+    const data = await api(
+      "/api/messages"
+    );
+
+    state.messages =
+      data.messages ||
+      data.data ||
+      data ||
+      [];
+
+  } catch (error) {
+    showError(error);
+  }
 }
 
 function chatPage() {
-  shell("chat", `
+  shell(
+    "chat",
+    `
+
     <section class="panel">
-      <h2>Messages</h2>
 
-      <div class="messages">
-        ${state.messages.map(message => `
-          <div class="message">
-            <strong>${escapeHtml(message.from)}</strong>
-            <p>${escapeHtml(message.text)}</p>
-            <small>${escapeHtml(message.time)}</small>
-          </div>
-        `).join("")}
-      </div>
+      <h2>
+        Messages
+      </h2>
 
-      <form onsubmit="sendMessage(event)">
-        <input
-          id="messageInput"
-          autocomplete="off"
-          placeholder="Write a message..."
-          required>
+      ${
+        !state.token
+          ? `
+            <div class="notice">
 
-        <button class="primary">
-          Send
-        </button>
-      </form>
+              <strong>
+                Login required
+              </strong>
+
+              <p>
+                Login with your phone number
+                to send real messages.
+              </p>
+
+              <button
+                class="primary"
+                onclick="login()">
+                Login
+              </button>
+
+            </div>
+          `
+          : `
+            <div class="messages">
+
+              ${
+                state.messages.length
+                  ? state.messages.map(
+                      message => `
+                        <div class="message">
+
+                          <strong>
+                            ${escapeHtml(
+                              message.senderName ||
+                              message.from ||
+                              "User"
+                            )}
+                          </strong>
+
+                          <p>
+                            ${escapeHtml(
+                              message.text ||
+                              message.content ||
+                              ""
+                            )}
+                          </p>
+
+                          <small>
+                            ${formatTime(
+                              message.createdAt ||
+                              message.time
+                            )}
+                          </small>
+
+                        </div>
+                      `
+                    ).join("")
+                  : `
+                    <div class="notice">
+                      No messages yet.
+                    </div>
+                  `
+              }
+
+            </div>
+
+            <form
+              onsubmit="sendMessage(event)">
+
+              <input
+                id="messageInput"
+                autocomplete="off"
+                placeholder="Write a message..."
+                required>
+
+              <button
+                class="primary">
+                Send
+              </button>
+
+            </form>
+          `
+      }
+
     </section>
-  `);
+  `
+  );
 }
 
-window.sendMessage = function(event) {
+window.sendMessage = async function (
+  event
+) {
   event.preventDefault();
 
-  const input =
-    document.getElementById("messageInput");
+  if (!state.token) {
+    alert("Please login first.");
+    return;
+  }
 
-  const text = input.value.trim();
+  const input =
+    document.getElementById(
+      "messageInput"
+    );
+
+  const text =
+    input?.value.trim();
 
   if (!text) return;
 
-  state.messages.push({
-    from: "You",
-    text,
-    time: "Just now"
-  });
+  input.disabled = true;
 
-  saveState();
+  try {
+    const data = await api(
+      "/api/messages",
+      {
+        method: "POST",
 
-  chatPage();
+        body: JSON.stringify({
+          text,
+          chatId:
+            state.selectedChatId
+        })
+      }
+    );
 
-  setTimeout(() => {
-    state.messages.push({
-      from: "Veylora AI",
-      text: "Message received. Connect a production messaging backend for real-time delivery.",
-      time: "Now"
-    });
+    const message =
+      data.message ||
+      data.data;
 
-    saveState();
-
-    if (document.getElementById("messageInput")) {
-      chatPage();
+    if (message) {
+      state.messages.push(message);
+    } else {
+      await loadMessages();
     }
-  }, 500);
+
+    chatPage();
+
+  } catch (error) {
+    input.disabled = false;
+    showError(error);
+  }
 };
+
+/* =========================================================
+   CALLS / WEBRTC
+========================================================= */
 
 function callsPage() {
-  shell("calls", `
+  shell(
+    "calls",
+    `
+
     <section class="panel">
-      <h2>Calls</h2>
+
+      <h2>
+        Calls
+      </h2>
 
       <p>
-        Voice and video calling interface.
+        Real voice and video calling.
       </p>
 
-      <div class="call-grid">
-        <button
-          class="call-card"
-          onclick="startCall('voice')">
-          <span>📞</span>
-          <strong>Voice Call</strong>
-          <small>FREE</small>
-        </button>
+      ${
+        !state.token
+          ? `
+            <div class="notice">
 
-        <button
-          class="call-card"
-          onclick="startCall('video')">
-          <span>🎥</span>
-          <strong>Video Call</strong>
-          <small>FREE</small>
-        </button>
-      </div>
+              Login before starting a call.
 
-      <div class="notice">
-        The interface is ready. Real-time
-        calling requires a production WebRTC/
-        calling backend.
-      </div>
+              <br><br>
+
+              <button
+                class="primary"
+                onclick="login()">
+                Login
+              </button>
+
+            </div>
+          `
+          : `
+            <div class="call-grid">
+
+              <button
+                class="call-card"
+                onclick="startCall('voice')">
+
+                <span>
+                  📞
+                </span>
+
+                <strong>
+                  Voice Call
+                </strong>
+
+                <small>
+                  FREE
+                </small>
+
+              </button>
+
+              <button
+                class="call-card"
+                onclick="startCall('video')">
+
+                <span>
+                  🎥
+                </span>
+
+                <strong>
+                  Video Call
+                </strong>
+
+                <small>
+                  FREE
+                </small>
+
+              </button>
+
+            </div>
+
+            <div class="notice">
+
+              <strong>
+                Real calling
+              </strong>
+
+              <p>
+                Calls use your backend for
+                signaling and WebRTC for the
+                media connection.
+              </p>
+
+            </div>
+          `
+      }
+
     </section>
-  `);
+  `
+  );
 }
 
-window.startCall = function(type) {
-  const label =
-    type === "video"
-      ? "Video call"
-      : "Voice call";
+window.startCall = async function (
+  type
+) {
+  if (!state.token) {
+    alert("Please login first.");
+    return;
+  }
 
-  alert(
-    `${label} interface opened.\n\n` +
-    "Connect your production WebRTC service " +
-    "to establish real calls."
+  const recipientId = prompt(
+    "Enter the recipient user ID:"
   );
+
+  if (!recipientId) return;
+
+  try {
+    const data = await api(
+      "/api/calls",
+      {
+        method: "POST",
+
+        body: JSON.stringify({
+          recipientId,
+          type
+        })
+      }
+    );
+
+    /*
+     * The backend should return something like:
+     *
+     * {
+     *   callId: "...",
+     *   type: "video",
+     *   roomId: "...",
+     *   iceServers: [...]
+     * }
+     */
+
+    const call =
+      data.call ||
+      data;
+
+    openCallScreen(call);
+
+  } catch (error) {
+    showError(error);
+  }
 };
 
-function storiesPage() {
-  shell("stories", `
+function openCallScreen(call) {
+  shell(
+    "calls",
+    `
+
     <section class="panel">
-      <h2>Stories & Status</h2>
 
-      <p>
-        Create a story or status update.
-      </p>
+      <h2>
+        ${
+          call.type === "video"
+            ? "Video Call"
+            : "Voice Call"
+        }
+      </h2>
 
-      <form onsubmit="createStory(event)">
-        <textarea
-          id="storyText"
-          placeholder="What's happening?"
-          required></textarea>
+      ${
+        call.type === "video"
+          ? `
+            <video
+              id="remoteVideo"
+              autoplay
+              playsinline
+              style="
+                width:100%;
+                max-height:400px;
+                background:#000;
+              ">
+            </video>
 
-        <button class="primary">
-          📸 Post Story — FREE
+            <video
+              id="localVideo"
+              autoplay
+              muted
+              playsinline
+              style="
+                width:140px;
+                background:#000;
+              ">
+            </video>
+          `
+          : `
+            <div class="notice">
+              📞 Voice call in progress
+            </div>
+          `
+      }
+
+      <div class="actions">
+
+        <button
+          onclick="toggleMute()">
+          🎙️ Mute
         </button>
-      </form>
 
-      <div class="stories-list">
-        ${state.stories.map(story => `
-          <article class="story-card">
-            <strong>
-              ${escapeHtml(story.name)}
-            </strong>
+        <button
+          onclick="toggleSpeaker()">
+          🔊 Speaker
+        </button>
 
-            <p>
-              ${escapeHtml(story.text)}
-            </p>
+        <button
+          class="primary"
+          onclick="endCall('${escapeHtml(
+            call.callId ||
+            call.id ||
+            ""
+          )}')">
+          ☎️ End Call
+        </button>
 
-            <small>
-              ${escapeHtml(story.time)}
-            </small>
-          </article>
-        `).join("")}
       </div>
+
     </section>
-  `);
+  `
+  );
+
+  /*
+   * Your actual WebRTC implementation should
+   * connect here using the call ID and ICE
+   * servers returned by the backend.
+   */
+
+  if (
+    typeof window.initializeWebRTC ===
+    "function"
+  ) {
+    window.initializeWebRTC(call);
+  }
 }
 
-window.createStory = function(event) {
+window.toggleMute = function () {
+  if (
+    typeof window.toggleWebRTCMute ===
+    "function"
+  ) {
+    window.toggleWebRTCMute();
+  } else {
+    alert(
+      "WebRTC client is not loaded yet."
+    );
+  }
+};
+
+window.toggleSpeaker = function () {
+  if (
+    typeof window.toggleWebRTCSpeaker ===
+    "function"
+  ) {
+    window.toggleWebRTCSpeaker();
+  } else {
+    alert(
+      "Speaker control is handled by the WebRTC client."
+    );
+  }
+};
+
+window.endCall = async function (
+  callId
+) {
+  try {
+    if (callId) {
+      await api(
+        `/api/calls/${encodeURIComponent(
+          callId
+        )}/end`,
+        {
+          method: "POST"
+        }
+      );
+    }
+  } catch (error) {
+    console.error(error);
+  }
+
+  if (
+    typeof window.closeWebRTC ===
+    "function"
+  ) {
+    window.closeWebRTC();
+  }
+
+  showPage("calls");
+};
+
+/* =========================================================
+   STORIES
+========================================================= */
+
+async function loadStories() {
+  try {
+    const data = await api(
+      "/api/stories"
+    );
+
+    state.stories =
+      data.stories ||
+      data.data ||
+      data ||
+      [];
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function storiesPage() {
+  shell(
+    "stories",
+    `
+
+    <section class="panel">
+
+      <h2>
+        Stories & Status
+      </h2>
+
+      ${
+        state.token
+          ? `
+            <form
+              onsubmit="createStory(event)">
+
+              <textarea
+                id="storyText"
+                placeholder="What's happening?"
+                required></textarea>
+
+              <button
+                class="primary">
+                📸 Post Story
+              </button>
+
+            </form>
+          `
+          : `
+            <button
+              class="primary"
+              onclick="login()">
+              Login to post
+            </button>
+          `
+      }
+
+      <div class="stories-list">
+
+        ${
+          state.stories.map(
+            story => `
+              <article
+                class="story-card">
+
+                <strong>
+                  ${escapeHtml(
+                    story.name ||
+                    story.user?.name ||
+                    "User"
+                  )}
+                </strong>
+
+                <p>
+                  ${escapeHtml(
+                    story.text ||
+                    story.content ||
+                    ""
+                  )}
+                </p>
+
+                <small>
+                  ${formatTime(
+                    story.createdAt ||
+                    story.time
+                  )}
+                </small>
+
+              </article>
+            `
+          ).join("")
+        }
+
+      </div>
+
+    </section>
+  `
+  );
+}
+
+window.createStory = async function (
+  event
+) {
   event.preventDefault();
 
-  const input =
-    document.getElementById("storyText");
+  if (!state.token) {
+    alert("Please login first.");
+    return;
+  }
 
-  const text = input.value.trim();
+  const input =
+    document.getElementById(
+      "storyText"
+    );
+
+  const text =
+    input.value.trim();
 
   if (!text) return;
 
-  state.stories.unshift({
-    name: state.user.name,
-    text,
-    time: "Just now"
-  });
+  try {
+    const data = await api(
+      "/api/stories",
+      {
+        method: "POST",
 
-  saveState();
+        body: JSON.stringify({
+          text
+        })
+      }
+    );
 
-  storiesPage();
+    const story =
+      data.story ||
+      data.data;
+
+    if (story) {
+      state.stories.unshift(story);
+    } else {
+      await loadStories();
+    }
+
+    storiesPage();
+
+  } catch (error) {
+    showError(error);
+  }
 };
 
-function channelsPage() {
-  shell("channels", `
-    <section class="panel">
-      <h2>Channels</h2>
+/* =========================================================
+   CHANNELS
+========================================================= */
 
-      <button
-        class="primary"
-        onclick="createChannel()">
-        ＋ Create Channel — FREE
-      </button>
+async function loadChannels() {
+  try {
+    const data = await api(
+      "/api/channels"
+    );
 
-      <div class="channel-list">
-        ${state.channels.map(channel => `
-          <article class="channel-card">
-            <h3>
-              ${escapeHtml(channel.name)}
-            </h3>
-
-            <p>
-              ${escapeHtml(channel.description)}
-            </p>
-
-            <small>
-              ${channel.followers} followers
-            </small>
-          </article>
-        `).join("")}
-      </div>
-    </section>
-  `);
+    state.channels =
+      data.channels ||
+      data.data ||
+      data ||
+      [];
+  } catch (error) {
+    console.error(error);
+  }
 }
 
-window.createChannel = function() {
-  const name =
-    prompt("Enter your channel name:");
+function channelsPage() {
+  shell(
+    "channels",
+    `
 
-  if (!name || !name.trim()) return;
+    <section class="panel">
 
-  state.channels.unshift({
-    name: name.trim(),
-    description: "New Veylora channel",
-    followers: 0
-  });
+      <h2>
+        Channels
+      </h2>
 
-  saveState();
+      ${
+        state.token
+          ? `
+            <button
+              class="primary"
+              onclick="createChannel()">
+              ＋ Create Channel
+            </button>
+          `
+          : `
+            <button
+              class="primary"
+              onclick="login()">
+              Login
+            </button>
+          `
+      }
 
-  channelsPage();
-};
+      <div class="channel-list">
+
+        ${
+          state.channels.map(
+            channel => `
+              <article
+                class="channel-card">
+
+                <h3>
+                  ${escapeHtml(
+                    channel.name
+                  )}
+                </h3>
+
+                <p>
+                  ${escapeHtml(
+                    channel.description ||
+                    ""
+                  )}
+                </p>
+
+                <small>
+                  ${
+                    Number(
+                      channel.followers ||
+                      0
+                    )
+                  }
+                  followers
+                </small>
+
+              </article>
+            `
+          ).join("")
+        }
+
+      </div>
+
+    </section>
+  `
+  );
+}
+
+window.createChannel =
+  async function () {
+    if (!state.token) {
+      alert("Please login first.");
+      return;
+    }
+
+    const name =
+      prompt(
+        "Enter your channel name:"
+      );
+
+    if (!name?.trim()) return;
+
+    const description =
+      prompt(
+        "Enter your channel description:"
+      ) || "";
+
+    try {
+      const data = await api(
+        "/api/channels",
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            name: name.trim(),
+            description
+          })
+        }
+      );
+
+      const channel =
+        data.channel ||
+        data.data;
+
+      if (channel) {
+        state.channels.unshift(
+          channel
+        );
+      } else {
+        await loadChannels();
+      }
+
+      channelsPage();
+
+    } catch (error) {
+      showError(error);
+    }
+  };
+
+/* =========================================================
+   AI
+========================================================= */
 
 function aiPage() {
   const tools = [
@@ -406,24 +1244,50 @@ function aiPage() {
     "AI Video Edit"
   ];
 
-  shell("ai", `
+  shell(
+    "ai",
+    `
+
     <section class="panel">
-      <h2>Veylora AI</h2>
+
+      <h2>
+        Veylora AI
+      </h2>
 
       <div class="ai-balance">
-        <strong>${state.aiCredits}</strong>
-        <span>AI credits</span>
+
+        <strong>
+          ${state.aiCredits}
+        </strong>
+
+        <span>
+          AI credits
+        </span>
+
       </div>
 
       <div class="ai-grid">
-        ${tools.map(tool => `
-          <button
-            class="ai-tool"
-            onclick="useAI('${escapeHtml(tool)}')">
-            <strong>${escapeHtml(tool)}</strong>
-            <small>Use AI</small>
-          </button>
-        `).join("")}
+
+        ${tools.map(
+          tool => `
+            <button
+              class="ai-tool"
+              onclick="useAI('${escapeHtml(
+                tool
+              )}')">
+
+              <strong>
+                ${escapeHtml(tool)}
+              </strong>
+
+              <small>
+                Use AI
+              </small>
+
+            </button>
+          `
+        ).join("")}
+
       </div>
 
       <textarea
@@ -434,204 +1298,449 @@ function aiPage() {
       <button
         class="primary"
         onclick="generateAI()">
+
         ✨ Generate
+
       </button>
 
       <div id="aiResult"></div>
+
     </section>
-  `);
+  `
+  );
 }
 
-window.useAI = function(tool) {
-  alert(
-    `${tool}\n\n` +
-    "The UI is ready. Connect your secure " +
-    "server-side AI provider to generate real content."
-  );
+window.useAI = function (
+  tool
+) {
+  const promptBox =
+    document.getElementById(
+      "aiPrompt"
+    );
+
+  if (promptBox) {
+    promptBox.value =
+      `${tool}: `;
+    promptBox.focus();
+  }
 };
 
-window.generateAI = function() {
-  const input =
-    document.getElementById("aiPrompt");
+window.generateAI =
+  async function () {
+    if (!state.token) {
+      alert("Please login first.");
+      return;
+    }
 
-  const result =
-    document.getElementById("aiResult");
+    const input =
+      document.getElementById(
+        "aiPrompt"
+      );
 
-  const prompt = input.value.trim();
+    const result =
+      document.getElementById(
+        "aiResult"
+      );
 
-  if (!prompt) {
-    alert("Enter a prompt first.");
-    return;
-  }
+    const prompt =
+      input?.value.trim();
 
-  if (state.aiCredits < 1) {
-    alert("You have no AI credits remaining.");
-    return;
-  }
+    if (!prompt) {
+      alert(
+        "Enter a prompt first."
+      );
+      return;
+    }
 
-  state.aiCredits -= 1;
+    if (state.aiCredits < 1) {
+      alert(
+        "You have no AI credits remaining."
+      );
+      return;
+    }
 
-  saveState();
+    result.innerHTML = `
+      <div class="notice">
+        Generating...
+      </div>
+    `;
 
-  result.innerHTML = `
-    <div class="notice">
-      <strong>AI request created</strong>
-      <p>
-        ${escapeHtml(prompt)}
-      </p>
-        Connect the production AI backend
-        to return the generated result.
-    </div>
-  `;
+    try {
+      const data = await api(
+        "/api/ai/generate",
+        {
+          method: "POST",
 
-  aiPage();
-};
+          body: JSON.stringify({
+            prompt
+          })
+        }
+      );
+
+      if (
+        typeof data.aiCredits ===
+        "number"
+      ) {
+        state.aiCredits =
+          data.aiCredits;
+      } else {
+        state.aiCredits -= 1;
+      }
+
+      result.innerHTML = `
+        <div class="notice">
+
+          <strong>
+            Veylora AI
+          </strong>
+
+          <p>
+            ${escapeHtml(
+              data.text ||
+              data.output ||
+              data.result ||
+              "Generation completed."
+            )}
+          </p>
+
+          ${
+            data.imageUrl
+              ? `
+                <img
+                  src="${escapeHtml(
+                    data.imageUrl
+                  )}"
+                  alt="AI result"
+                  style="max-width:100%;">
+              `
+              : ""
+          }
+
+          ${
+            data.videoUrl
+              ? `
+                <video
+                  controls
+                  style="max-width:100%;">
+
+                  <source
+                    src="${escapeHtml(
+                      data.videoUrl
+                    )}">
+
+                </video>
+              `
+              : ""
+          }
+
+        </div>
+      `;
+
+      saveState();
+
+    } catch (error) {
+      result.innerHTML = "";
+
+      showError(error);
+    }
+  };
+
+/* =========================================================
+   PREMIUM / PAYMENTS
+========================================================= */
 
 function premiumPage() {
   const plans = [
     {
       name: "Go",
-      price: "₦10,000",
-      features: [
-        "More AI credits",
-        "Faster processing"
-      ]
+      price: "₦10,000"
     },
     {
       name: "Pro",
-      price: "₦30,000",
-      trial: "2 months eligible trial",
-      features: [
-        "Everything in Go",
-        "Advanced AI",
-        "Higher AI limits",
-        "Priority processing"
-      ]
+      price: "₦30,000"
     },
     {
       name: "Ultra",
-      price: "₦50,000",
-      trial: "7-day eligible trial",
-      features: [
-        "Everything in Pro",
-        "Highest AI priority",
-        "Highest AI allowance",
-        "Ultra AI tools"
-      ]
+      price: "₦50,000"
     }
   ];
 
-  shell("premium", `
+  shell(
+    "premium",
+    `
+
     <section class="panel">
-      <h2>Premium</h2>
+
+      <h2>
+        Premium
+      </h2>
 
       <p>
-        Premium plans unlock advanced AI and
-        additional services.
+        Choose a Veylora premium plan.
       </p>
 
       <div class="plans">
-        ${plans.map(plan => `
-          <article class="plan-card">
-            <h3>${plan.name}</h3>
 
-            <div class="price">
-              ${plan.price}
-              <small>/month</small>
-            </div>
+        ${plans.map(
+          plan => `
+            <article
+              class="plan-card">
 
-            ${
-              plan.trial
-                ? `<div class="trial">
-                    ${plan.trial}
-                   </div>`
-                : ""
-            }
+              <h3>
+                ${plan.name}
+              </h3>
 
-            <ul>
-              ${plan.features.map(feature => `
-                <li>✓ ${feature}</li>
-              `).join("")}
-            </ul>
+              <div class="price">
+                ${plan.price}
+                <small>/month</small>
+              </div>
 
-            <button
-              class="primary full"
-              onclick="startCheckout('${plan.name}')">
-              Choose ${plan.name}
-            </button>
-          </article>
-        `).join("")}
+              <ul>
+
+                <li>
+                  ✓ More AI credits
+                </li>
+
+                <li>
+                  ✓ Premium features
+                </li>
+
+                <li>
+                  ✓ Priority processing
+                </li>
+
+              </ul>
+
+              <button
+                class="primary full"
+                onclick="startCheckout('${escapeHtml(
+                  plan.name
+                )}')">
+
+                Choose ${escapeHtml(
+                  plan.name
+                )}
+
+              </button>
+
+            </article>
+          `
+        ).join("")}
+
       </div>
 
-      <div class="notice">
-        Production payment entitlement must be
-        verified server-side. Never put private
-        payment credentials in this APK.
-      </div>
     </section>
-  `);
-}
-
-window.startCheckout = function(plan) {
-  alert(
-    `${plan} selected.\n\n` +
-    "Connect your secure payment provider " +
-    "backend to create the checkout session."
+  `
   );
-};
-
-function adminPage() {
-  shell("admin", `
-    <section class="panel">
-      <h2>Admin Dashboard</h2>
-
-      <div class="stats">
-        <article>
-          <small>Users</small>
-          <strong>128,540</strong>
-        </article>
-
-        <article>
-          <small>Active</small>
-          <strong>45,320</strong>
-        </article>
-
-        <article>
-          <small>AI Credits</small>
-          <strong>18.2M</strong>
-        </article>
-
-        <article>
-          <small>Stories</small>
-          <strong>${state.stories.length}</strong>
-        </article>
-      </div>
-
-      <div class="notice">
-        Admin authorization must be enforced
-        on the server. Do not rely on this
-        frontend screen for security.
-      </div>
-    </section>
-  `);
 }
 
-window.showPage = function(page) {
-  const pages = {
-    home: homePage,
-    chat: chatPage,
-    calls: callsPage,
-    stories: storiesPage,
-    channels: channelsPage,
-    ai: aiPage,
-    premium: premiumPage,
-    admin: adminPage
+window.startCheckout =
+  async function (plan) {
+    if (!state.token) {
+      alert(
+        "Please login before purchasing."
+      );
+      return;
+    }
+
+    try {
+      const data = await api(
+        "/api/payments/checkout",
+        {
+          method: "POST",
+
+          body: JSON.stringify({
+            plan
+          })
+        }
+      );
+
+      /*
+       * Your backend should return:
+       *
+       * {
+       *   checkoutUrl: "https://..."
+       * }
+       */
+
+      if (!data.checkoutUrl) {
+        throw new Error(
+          "Payment checkout URL was not returned."
+        );
+      }
+
+      window.location.href =
+        data.checkoutUrl;
+
+    } catch (error) {
+      showError(error);
+    }
   };
 
-  if (pages[page]) {
-    pages[page]();
-  }
-};
+/* =========================================================
+   ADMIN
+========================================================= */
 
-loadState();
-showPage("home");
+async function adminPage() {
+  shell(
+    "admin",
+    `
+
+    <section class="panel">
+
+      <h2>
+        Admin Dashboard
+      </h2>
+
+      <div id="adminContent">
+
+        Loading...
+
+      </div>
+
+    </section>
+  `
+  );
+
+  if (!state.token) {
+    document.getElementById(
+      "adminContent"
+    ).innerHTML = `
+      <div class="notice">
+        Login required.
+      </div>
+    `;
+
+    return;
+  }
+
+  try {
+    const data = await api(
+      "/api/admin/stats"
+    );
+
+    const stats =
+      data.stats ||
+      data;
+
+    document.getElementById(
+      "adminContent"
+    ).innerHTML = `
+
+      <div class="stats">
+
+        <article>
+          <small>
+            Users
+          </small>
+
+          <strong>
+            ${Number(
+              stats.users || 0
+            )}
+          </strong>
+        </article>
+
+        <article>
+          <small>
+            Active
+          </small>
+
+          <strong>
+            ${Number(
+              stats.activeUsers || 0
+            )}
+          </strong>
+        </article>
+
+        <article>
+          <small>
+            AI Credits
+          </small>
+
+          <strong>
+            ${Number(
+              stats.aiCredits || 0
+            )}
+          </strong>
+        </article>
+
+        <article>
+          <small>
+            Messages
+          </small>
+
+          <strong>
+            ${Number(
+              stats.messages || 0
+            )}
+          </strong>
+        </article>
+
+      </div>
+    `;
+
+  } catch (error) {
+    document.getElementById(
+      "adminContent"
+    ).innerHTML = `
+      <div class="notice">
+        ${escapeHtml(
+          error.message ||
+          "Unable to load admin dashboard."
+        )}
+      </div>
+    `;
+  }
+}
+
+/* =========================================================
+   NAVIGATION
+========================================================= */
+
+window.showPage =
+  async function (page) {
+    const pages = {
+      home: homePage,
+      chat: chatPage,
+      calls: callsPage,
+      stories: storiesPage,
+      channels: channelsPage,
+      ai: aiPage,
+      premium: premiumPage,
+      admin: adminPage
+    };
+
+    if (!pages[page]) return;
+
+    if (page === "chat") {
+      await loadMessages();
+    }
+
+    if (page === "stories") {
+      await loadStories();
+    }
+
+    if (page === "channels") {
+      await loadChannels();
+    }
+
+    pages[page]();
+  };
+
+/* =========================================================
+   START APPLICATION
+========================================================= */
+
+async function startApplication() {
+  const authenticated =
+    await loadCurrentUser();
+
+  if (authenticated) {
+    await loadAppData();
+  }
+
+  showPage("home");
+}
+
+startApplication();
