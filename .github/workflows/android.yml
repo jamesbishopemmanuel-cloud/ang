@@ -11,170 +11,112 @@ permissions:
 
 jobs:
   build-android:
-    name: Build Veylora APK
+    name: Build Veylora Android APK
     runs-on: ubuntu-latest
 
     steps:
-      # --------------------------------------------------
-      # 1. Checkout
-      # --------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # --------------------------------------------------
-      # 2. Node.js
-      # --------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      # --------------------------------------------------
-      # 3. Show repository files
-      # --------------------------------------------------
-      - name: Inspect repository
+      - name: Show project
         run: |
-          echo "Current directory:"
           pwd
-
-          echo ""
           echo "Root files:"
           ls -la
 
-          echo ""
-          echo "package.json:"
-          test -f package.json
-          cat package.json
-
-      # --------------------------------------------------
-      # 4. Install all frontend dependencies
-      # --------------------------------------------------
       - name: Install frontend dependencies
         run: |
           npm install
           npm install socket.io-client@4.8.1 --save
 
-      # --------------------------------------------------
-      # 5. Verify Socket.IO
-      # --------------------------------------------------
-      - name: Verify Socket.IO client
+      - name: Verify Socket.IO
         run: |
-          echo "Checking socket.io-client..."
           npm ls socket.io-client
 
-          node --input-type=module -e "
-            import('socket.io-client')
-              .then(() => console.log('socket.io-client installed successfully'))
-              .catch(error => {
-                console.error(error);
-                process.exit(1);
-              });
-          "
-
-      # --------------------------------------------------
-      # 6. Build frontend
-      # --------------------------------------------------
-      - name: Build Veylora web app
+      - name: Build web application
         run: npm run build
 
-      # --------------------------------------------------
-      # 7. Verify dist
-      # --------------------------------------------------
-      - name: Verify web build
-        run: |
-          test -d dist
-          echo "Veylora web build completed successfully."
-
-          echo "dist contents:"
-          find dist -maxdepth 2 -type f | sort | head -100
-
-      # --------------------------------------------------
-      # 8. Check Capacitor
-      # --------------------------------------------------
-      - name: Check Capacitor
+      - name: Install Capacitor CLI
         run: |
           npx cap --version
 
-      # --------------------------------------------------
-      # 9. Check Android project
-      # --------------------------------------------------
-      - name: Check Android project
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Prepare Android project
         run: |
           echo "Checking Android project..."
 
+          if [ -d android ]; then
+            echo "Existing android directory found."
+
+            if [ ! -f android/gradlew ]; then
+              echo "Existing Android project is incomplete."
+              echo "Removing incomplete Android directory..."
+              rm -rf android
+            fi
+          fi
+
           if [ ! -d android ]; then
-            echo "Android directory does not exist."
-            echo "Creating Android project..."
+            echo "Creating a complete Capacitor Android project..."
             npx cap add android
           fi
 
-          test -d android
-          test -d android/app
+          echo "Android directory:"
+          ls -la android
 
-          echo "Android project found."
+          echo "Checking Gradle wrapper..."
 
-      # --------------------------------------------------
-      # 10. Sync Capacitor
-      # --------------------------------------------------
-      - name: Sync Capacitor Android
+          if [ ! -f android/gradlew ]; then
+            echo "ERROR: Capacitor did not create android/gradlew."
+            find android -maxdepth 5 -type f | sort
+            exit 1
+          fi
+
+          chmod +x android/gradlew
+
+          echo "Gradle wrapper successfully created."
+
+      - name: Sync Capacitor
         run: |
           npx cap sync android
 
-      # --------------------------------------------------
-      # 11. Setup Java
-      # --------------------------------------------------
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      # --------------------------------------------------
-      # 12. Setup Android SDK
-      # --------------------------------------------------
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      # --------------------------------------------------
-      # 13. Check Gradle wrapper
-      # --------------------------------------------------
-      - name: Check Gradle wrapper
+      - name: Verify Android project
         run: |
-          if [ ! -f android/gradlew ]; then
-            echo "ERROR: android/gradlew is missing."
-            echo "Android project cannot be built."
-            find android -maxdepth 3 -type f | sort
-            exit 1
-          fi
+          test -d android
+          test -d android/app
+          test -f android/gradlew
 
-          chmod +x android/gradlew
+          echo "Android project is complete."
 
-          echo "Gradle wrapper found."
+          ls -la android
+          ls -la android/gradle/wrapper || true
 
-      # --------------------------------------------------
-      # 14. Build Debug APK
-      # --------------------------------------------------
       - name: Build Debug APK
         working-directory: android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --stacktrace
 
-      # --------------------------------------------------
-      # 15. Find APK
-      # --------------------------------------------------
       - name: Find APK
         run: |
-          echo "Searching for APK files..."
-
+          echo "APK files:"
           find android/app/build/outputs \
             -type f \
             -name "*.apk" \
             -print
 
-      # --------------------------------------------------
-      # 16. Verify APK
-      # --------------------------------------------------
       - name: Verify APK
         run: |
           APK_COUNT=$(find android/app/build/outputs \
@@ -182,15 +124,12 @@ jobs:
             -name "*.apk" | wc -l)
 
           if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: No APK was created."
+            echo "ERROR: APK was not created."
             exit 1
           fi
 
-          echo "APK created successfully."
+          echo "APK successfully created."
 
-      # --------------------------------------------------
-      # 17. Upload APK
-      # --------------------------------------------------
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
@@ -198,14 +137,11 @@ jobs:
           path: android/app/build/outputs/**/*.apk
           if-no-files-found: error
 
-      # --------------------------------------------------
-      # 18. Final information
-      # --------------------------------------------------
       - name: Build summary
         run: |
-          echo "======================================"
-          echo "VEY LORA BUILD SUCCESSFUL"
-          echo "======================================"
+          echo "========================================"
+          echo "VEY LORA ANDROID BUILD SUCCESSFUL"
+          echo "========================================"
 
           find android/app/build/outputs \
             -type f \
