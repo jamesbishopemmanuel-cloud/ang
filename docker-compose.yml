@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: veylora-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: veylora
+      POSTGRES_PASSWORD: veylora_password
+      POSTGRES_DB: veylora
+    ports:
+      - "5432:5432"
+    volumes:
+      - veylora_postgres:/var/lib/postgresql/data
+
+volumes:
+  veylora_postgres:
