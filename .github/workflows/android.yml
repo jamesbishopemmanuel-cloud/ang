@@ -24,27 +24,31 @@ jobs:
           node-version: 22
 
       - name: Setup Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
-          cache: gradle
 
       - name: Check Java
         run: |
           java -version
           javac -version
 
-      - name: Install dependencies
+      - name: Install npm dependencies
         run: npm install
 
       - name: Build web application
         run: npm run build
 
-      - name: Check web build
+      - name: Verify web build
         run: |
-          test -d dist
-          echo "Web build completed successfully."
+          if [ ! -d dist ]; then
+            echo "ERROR: dist directory was not created."
+            exit 1
+          fi
+
+          echo "Web build successful."
+          find dist -maxdepth 3 -type f -print
 
       - name: Check Capacitor
         run: npx cap --version
@@ -57,6 +61,12 @@ jobs:
 
       - name: Sync Capacitor Android
         run: npx cap sync android
+
+      - name: Check Android project
+        run: |
+          test -d android
+          test -f android/gradlew
+          echo "Android project found."
 
       - name: Make Gradle executable
         run: chmod +x android/gradlew
@@ -75,14 +85,26 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
 
-      - name: Find APK
+      - name: Locate APK
         run: |
           echo "===================================="
-          echo "Generated APK files:"
+          echo "APK FILES"
           echo "===================================="
+
           find android -type f -name "*.apk" -print
 
-      - name: Upload Debug APK
+      - name: Verify APK exists
+        run: |
+          APK_COUNT=$(find android/app/build/outputs/apk/debug -type f -name "*.apk" 2>/dev/null | wc -l)
+
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "ERROR: No APK was generated."
+            exit 1
+          fi
+
+          echo "APK generated successfully."
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: veylora-debug-apk
