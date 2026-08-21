@@ -1,116 +1,82 @@
-name: Veylora Android APK
+name: Build Veylora Android APK
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  android:
+  build-android:
     runs-on: ubuntu-latest
 
     steps:
-
-      # 1. Get the Veylora source code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Install Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      # 3. Install Java for Android/Gradle
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Verify Socket.IO client
+        run: npm ls socket.io-client
+
+      - name: Build Veylora web app
+        run: npm run build
+
+      - name: Check web build
+        run: |
+          test -d dist
+          echo "Veylora web build created successfully."
+
+      - name: Install Capacitor CLI
+        run: npx cap --version
+
+      - name: Sync Capacitor Android
+        run: npx cap sync android
+
+      - name: Check Android project
+        run: |
+          echo "Checking Android project..."
+          test -d android
+          test -f android/settings.gradle || test -f android/settings.gradle.kts
+          test -d android/app
+          echo "Android project found successfully."
+
       - name: Setup Java
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
 
-      # 4. Install Veylora dependencies
-      - name: Install dependencies
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Make Gradle executable
         run: |
-          npm install
-
-      # 5. Build the web application
-      - name: Build web application
-        run: |
-          npm run build
-
-      # 6. Install Capacitor
-      - name: Install Capacitor
-        run: |
-          npm install @capacitor/core @capacitor/cli @capacitor/android
-
-      # 7. Remove incomplete Android project
-      - name: Remove incomplete Android project
-        run: |
-          if [ -d android ]; then
-            echo "Removing incomplete Android project..."
-            rm -rf android
-          fi
-
-      # 8. Create a complete Android project
-      - name: Create Android project
-        run: |
-          echo "Creating Android project..."
-
-          npx cap add android
-
-          echo "Android project created."
-
-      # 9. Synchronize Veylora with Android
-      - name: Sync Capacitor
-        run: |
-          npx cap sync android
-
-      # 10. Check generated Android project
-      - name: Verify Android project
-        run: |
-          echo "Checking generated Android project..."
-
-          test -d android
-          test -d android/app
-          test -f android/gradlew
-          test -f android/settings.gradle
-
           chmod +x android/gradlew
 
-          echo "===================================="
-          echo "Android project created successfully"
-          echo "===================================="
-
-          ls -la android
-
-      # 11. Build debug APK
       - name: Build debug APK
         working-directory: android
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Find APK
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          echo "APK files:"
+          find android/app/build/outputs/apk -type f -name "*.apk" -print
 
-      # 12. Check APK
-      - name: Verify APK
-        run: |
-          APK="android/app/build/outputs/apk/debug/app-debug.apk"
-
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: APK was not created."
-            exit 1
-          fi
-
-          echo "===================================="
-          echo "Veylora APK BUILD SUCCESSFUL"
-          echo "===================================="
-
-          ls -lh "$APK"
-
-      # 13. Upload APK to GitHub Actions
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Veylora-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: veylora-debug-apk
+          path: android/app/build/outputs/apk/**/*.apk
           if-no-files-found: error
