@@ -9,27 +9,33 @@ let socket = null;
 
 const state = {
   user: null,
-
-  token:
-    localStorage.getItem("veylora_token") || "",
+  token: localStorage.getItem("veylora_token") || "",
 
   aiCredits:
-    Number(
-      localStorage.getItem("veylora_ai_credits")
-    ) || 1240,
+    Number(localStorage.getItem("veylora_ai_credits")) || 1240,
 
   messages: [],
 
   currentConversationId: "general",
 
-  stats: {
-    totalUsers: 0,
-    activeUsers: 0,
-    totalMessages: 0,
-    totalFollowers: 0,
-    channelFollowers: 0,
-    totalChannels: 0,
-    totalStories: 0
+  dashboard: {
+    chats: [],
+    followers: 0,
+    subscribers: 0,
+    likes: 0,
+    shares: 0,
+    comments: 0,
+    walletBalance: 0,
+    transactions: [],
+    communities: [],
+    devices: [],
+    admin: {
+      totalUsers: 0,
+      activeUsers: 0,
+      messages: 0,
+      revenue: 0
+    },
+    premium: []
   },
 
   stories: [
@@ -44,7 +50,7 @@ const state = {
     {
       name: "Veylora Creators",
       description: "Creator news and updates",
-      followers: 1280
+      followers: 0
     }
   ]
 };
@@ -74,7 +80,49 @@ function escapeHtml(value) {
 }
 
 function formatNumber(value) {
-  return Number(value || 0).toLocaleString();
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+
+  return new Intl.NumberFormat().format(number);
+}
+
+function formatCurrency(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "₦0.00";
+  }
+
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    minimumFractionDigits: 2
+  }).format(number);
+}
+
+function formatCompactNumber(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+
+  if (number >= 1000000000) {
+    return `${(number / 1000000000).toFixed(1)}B`;
+  }
+
+  if (number >= 1000000) {
+    return `${(number / 1000000).toFixed(1)}M`;
+  }
+
+  if (number >= 1000) {
+    return `${(number / 1000).toFixed(1)}K`;
+  }
+
+  return String(number);
 }
 
 function saveLocalState() {
@@ -103,11 +151,19 @@ function loadLocalState() {
       localStorage.getItem("veylora_channels");
 
     if (stories) {
-      state.stories = JSON.parse(stories);
+      const parsedStories = JSON.parse(stories);
+
+      if (Array.isArray(parsedStories)) {
+        state.stories = parsedStories;
+      }
     }
 
     if (channels) {
-      state.channels = JSON.parse(channels);
+      const parsedChannels = JSON.parse(channels);
+
+      if (Array.isArray(parsedChannels)) {
+        state.channels = parsedChannels;
+      }
     }
   } catch (error) {
     console.error(
@@ -142,8 +198,7 @@ async function apiRequest(path, options = {}) {
   const headers = {
     ...(options.body
       ? {
-          "Content-Type":
-            "application/json"
+          "Content-Type": "application/json"
         }
       : {}),
     ...(options.headers || {})
@@ -181,71 +236,150 @@ async function apiRequest(path, options = {}) {
 }
 
 /* =========================================================
-   REAL DATABASE STATISTICS
+   DASHBOARD DATA
 ========================================================= */
 
-async function loadStats() {
-  if (!state.token) return;
+function resetDashboardData() {
+  state.dashboard = {
+    chats: [],
+    followers: 0,
+    subscribers: 0,
+    likes: 0,
+    shares: 0,
+    comments: 0,
+    walletBalance: 0,
+
+    transactions: [],
+
+    communities: [],
+
+    devices: [],
+
+    admin: {
+      totalUsers: 0,
+      activeUsers: 0,
+      messages: 0,
+      revenue: 0
+    },
+
+    premium: []
+  };
+}
+
+function normalizeDashboardData(data) {
+  const source =
+    data?.dashboard ||
+    data?.data ||
+    data ||
+    {};
+
+  state.dashboard = {
+    chats: Array.isArray(source.chats)
+      ? source.chats
+      : [],
+
+    followers:
+      Number(source.followers) || 0,
+
+    subscribers:
+      Number(source.subscribers) || 0,
+
+    likes:
+      Number(source.likes) || 0,
+
+    shares:
+      Number(source.shares) || 0,
+
+    comments:
+      Number(source.comments) || 0,
+
+    walletBalance:
+      Number(
+        source.walletBalance ??
+        source.wallet?.balance ??
+        0
+      ) || 0,
+
+    transactions:
+      Array.isArray(source.transactions)
+        ? source.transactions
+        : [],
+
+    communities:
+      Array.isArray(source.communities)
+        ? source.communities
+        : [],
+
+    devices:
+      Array.isArray(source.devices)
+        ? source.devices
+        : [],
+
+    admin: {
+      totalUsers:
+        Number(
+          source.admin?.totalUsers ??
+          source.totalUsers ??
+          0
+        ) || 0,
+
+      activeUsers:
+        Number(
+          source.admin?.activeUsers ??
+          source.activeUsers ??
+          0
+        ) || 0,
+
+      messages:
+        Number(
+          source.admin?.messages ??
+          source.totalMessages ??
+          0
+        ) || 0,
+
+      revenue:
+        Number(
+          source.admin?.revenue ??
+          source.revenue ??
+          0
+        ) || 0
+    },
+
+    premium:
+      Array.isArray(source.premium)
+        ? source.premium
+        : []
+  };
+}
+
+async function loadDashboardData() {
+  if (!state.token) {
+    resetDashboardData();
+    return;
+  }
 
   try {
     const data =
-      await apiRequest("/api/stats");
+      await apiRequest(
+        "/api/dashboard"
+      );
 
-    state.stats = {
-      totalUsers:
-        Number(data.totalUsers) || 0,
-
-      activeUsers:
-        Number(data.activeUsers) || 0,
-
-      totalMessages:
-        Number(data.totalMessages) || 0,
-
-      totalFollowers:
-        Number(data.totalFollowers) || 0,
-
-      channelFollowers:
-        Number(data.channelFollowers) || 0,
-
-      totalChannels:
-        Number(data.totalChannels) || 0,
-
-      totalStories:
-        Number(data.totalStories) || 0
-    };
-
-    console.log(
-      "Veylora statistics:",
-      state.stats
-    );
+    normalizeDashboardData(data);
   } catch (error) {
-    console.error(
-      "Could not load Veylora statistics:",
-      error
+    console.warn(
+      "Dashboard API unavailable:",
+      error.message
     );
-  }
-}
 
-/*
-  Refresh dashboard statistics without
-  destroying the current page.
-*/
-async function refreshDashboardStats() {
-  try {
-    await loadStats();
+    /*
+      Important:
+      We deliberately do NOT insert fake figures here.
 
-    if (
-      document.querySelector(
-        ".dashboard"
-      )
-    ) {
-      homePage();
-    }
-  } catch (error) {
-    console.error(
-      "Dashboard refresh failed:",
-      error
-    );
+      Until the backend endpoint exists, values remain
+      zero / empty.
+    */
+
+    resetDashboardData();
   }
 }
 
@@ -358,9 +492,9 @@ async function login(event) {
       ?.value.trim();
 
   const password =
-    document.getElementById(
-      "loginPassword"
-    )?.value;
+    document
+      .getElementById("loginPassword")
+      ?.value;
 
   const button =
     document.getElementById(
@@ -371,6 +505,7 @@ async function login(event) {
     loginPage(
       "Phone number and password are required."
     );
+
     return;
   }
 
@@ -390,8 +525,11 @@ async function login(event) {
         }
       );
 
-    state.token = data.token;
-    state.user = data.user;
+    state.token =
+      data.token || "";
+
+    state.user =
+      data.user || null;
 
     localStorage.setItem(
       "veylora_token",
@@ -402,12 +540,7 @@ async function login(event) {
 
     await loadMessages();
 
-    /*
-      IMPORTANT:
-      Load real database statistics
-      immediately after login.
-    */
-    await loadStats();
+    await loadDashboardData();
 
     showPage("home");
   } catch (error) {
@@ -541,9 +674,9 @@ async function signup(event) {
       ?.value.trim();
 
   const password =
-    document.getElementById(
-      "signupPassword"
-    )?.value;
+    document
+      .getElementById("signupPassword")
+      ?.value;
 
   const button =
     document.getElementById(
@@ -554,6 +687,7 @@ async function signup(event) {
     signupPage(
       "All fields are required."
     );
+
     return;
   }
 
@@ -561,10 +695,14 @@ async function signup(event) {
     signupPage(
       "Password must contain at least 8 characters."
     );
+
     return;
   }
 
-  setLoading(button, true);
+  setLoading(
+    button,
+    true
+  );
 
   try {
     await apiRequest(
@@ -678,7 +816,7 @@ function showOtpPage({
     .getElementById("otpForm")
     ?.addEventListener(
       "submit",
-      event =>
+      (event) =>
         verifySignupOtp(
           event,
           {
@@ -690,9 +828,7 @@ function showOtpPage({
     );
 
   document
-    .getElementById(
-      "backSignupButton"
-    )
+    .getElementById("backSignupButton")
     ?.addEventListener(
       "click",
       showSignup
@@ -707,7 +843,9 @@ async function verifySignupOtp(
 
   const code =
     document
-      .getElementById("signupOtp")
+      .getElementById(
+        "signupOtp"
+      )
       ?.value.trim();
 
   const button =
@@ -724,7 +862,10 @@ async function verifySignupOtp(
     return;
   }
 
-  setLoading(button, true);
+  setLoading(
+    button,
+    true
+  );
 
   try {
     await apiRequest(
@@ -739,10 +880,6 @@ async function verifySignupOtp(
       }
     );
 
-    /*
-      This creates the actual user
-      in your backend database.
-    */
     const data =
       await apiRequest(
         "/api/auth/register",
@@ -757,8 +894,11 @@ async function verifySignupOtp(
         }
       );
 
-    state.token = data.token;
-    state.user = data.user;
+    state.token =
+      data.token || "";
+
+    state.user =
+      data.user || null;
 
     localStorage.setItem(
       "veylora_token",
@@ -767,13 +907,7 @@ async function verifySignupOtp(
 
     connectSocket();
 
-    /*
-      The new account now exists.
-      Get the new real user count.
-    */
-    await loadStats();
-
-    await loadMessages();
+    await loadDashboardData();
 
     showPage("home");
   } catch (error) {
@@ -805,6 +939,8 @@ function logout() {
   state.user = null;
   state.messages = [];
 
+  resetDashboardData();
+
   localStorage.removeItem(
     "veylora_token"
   );
@@ -822,22 +958,27 @@ function logout() {
 ========================================================= */
 
 function connectSocket() {
-  if (!state.token) return;
+  if (!state.token) {
+    return;
+  }
 
   if (socket) {
     socket.disconnect();
   }
 
-  socket = io(API_URL, {
-    auth: {
-      token: state.token
-    },
+  socket = io(
+    API_URL,
+    {
+      auth: {
+        token: state.token
+      },
 
-    transports: [
-      "websocket",
-      "polling"
-    ]
-  });
+      transports: [
+        "websocket",
+        "polling"
+      ]
+    }
+  );
 
   socket.on(
     "connect",
@@ -855,7 +996,7 @@ function connectSocket() {
 
   socket.on(
     "connect_error",
-    error => {
+    (error) => {
       console.error(
         "Socket.IO error:",
         error.message
@@ -865,7 +1006,7 @@ function connectSocket() {
 
   socket.on(
     "message:new",
-    async message => {
+    (message) => {
       if (
         message.conversationId !==
         state.currentConversationId
@@ -875,7 +1016,7 @@ function connectSocket() {
 
       const exists =
         state.messages.some(
-          item =>
+          (item) =>
             item.id === message.id
         );
 
@@ -885,19 +1026,13 @@ function connectSocket() {
         );
 
         renderMessagesOnly();
-
-        /*
-          A new message changes
-          the real message count.
-        */
-        await loadStats();
       }
     }
   );
 
   socket.on(
     "disconnect",
-    reason => {
+    (reason) => {
       console.log(
         "Socket disconnected:",
         reason
@@ -911,7 +1046,9 @@ function connectSocket() {
 ========================================================= */
 
 async function loadMessages() {
-  if (!state.token) return;
+  if (!state.token) {
+    return;
+  }
 
   try {
     const data =
@@ -941,7 +1078,9 @@ function renderMessagesOnly() {
       ".messages"
     );
 
-  if (!container) return;
+  if (!container) {
+    return;
+  }
 
   if (!state.messages.length) {
     container.innerHTML = `
@@ -966,7 +1105,7 @@ function renderMessagesOnly() {
   container.innerHTML =
     state.messages
       .map(
-        message => `
+        (message) => `
           <div class="message ${
             message.senderId ===
             state.user?.id
@@ -1015,7 +1154,9 @@ async function sendRealMessage(text) {
   const cleanText =
     String(text || "").trim();
 
-  if (!cleanText) return;
+  if (!cleanText) {
+    return;
+  }
 
   try {
     if (
@@ -1052,8 +1193,6 @@ async function sendRealMessage(text) {
           data.message
         );
       }
-
-      await loadStats();
     }
 
     renderMessagesOnly();
@@ -1073,12 +1212,16 @@ function sendMessage(event) {
       "messageInput"
     );
 
-  if (!input) return;
+  if (!input) {
+    return;
+  }
 
   const text =
     input.value.trim();
 
-  if (!text) return;
+  if (!text) {
+    return;
+  }
 
   input.value = "";
 
@@ -1089,11 +1232,18 @@ function sendMessage(event) {
    APPLICATION SHELL
 ========================================================= */
 
-function shell(active, content) {
+function shell(
+  active,
+  content
+) {
   const app =
-    document.getElementById("app");
+    document.getElementById(
+      "app"
+    );
 
-  if (!app) return;
+  if (!app) {
+    return;
+  }
 
   app.innerHTML = `
     <header class="topbar">
@@ -1173,26 +1323,65 @@ function shell(active, content) {
     .querySelectorAll(
       "[data-page]"
     )
-    .forEach(button => {
-      button.addEventListener(
-        "click",
-        () =>
-          showPage(
-            button.dataset.page
-          )
-      );
-    });
+    .forEach(
+      (button) => {
+        button.addEventListener(
+          "click",
+          () =>
+            showPage(
+              button.dataset.page
+            )
+        );
+      }
+    );
 }
 
 /* =========================================================
-   NEW HOMEPAGE
+   HOME — NEW DASHBOARD
 ========================================================= */
 
 function homePage() {
+  const dashboard =
+    state.dashboard;
+
+  const chats =
+    Array.isArray(
+      dashboard.chats
+    )
+      ? dashboard.chats
+      : [];
+
+  const communities =
+    Array.isArray(
+      dashboard.communities
+    )
+      ? dashboard.communities
+      : [];
+
+  const transactions =
+    Array.isArray(
+      dashboard.transactions
+    )
+      ? dashboard.transactions
+      : [];
+
+  const devices =
+    Array.isArray(
+      dashboard.devices
+    )
+      ? dashboard.devices
+      : [];
+
+  const userName =
+    state.user?.name ||
+    "Veylora User";
+
   shell(
     "home",
     `
       <div class="dashboard">
+
+        <!-- ================= CHAT ================= -->
 
         <section class="dash-card">
 
@@ -1211,89 +1400,79 @@ function homePage() {
             <span>Channels</span>
           </div>
 
-          ${[
-            [
-              "FG",
-              "Family Group",
-              "Mom: Dinner at 7pm",
-              "9:00 AM"
-            ],
+          ${
+            chats.length
+              ? chats
+                  .map(
+                    (chat) => `
+                      <div class="dash-row">
 
-            [
-              "JD",
-              "John Doe",
-              "Hey! How are you?",
-              "9:00 AM"
-            ],
+                        <div class="person">
 
-            [
-              "SS",
-              "Study Squad",
-              "You: Notes for exam",
-              "9:10 AM"
-            ],
+                          <div class="avatar">
+                            ${escapeHtml(
+                              chat.avatar ||
+                                chat.initials ||
+                                String(
+                                  chat.name ||
+                                    "V"
+                                )
+                                  .slice(0, 2)
+                                  .toUpperCase()
+                            )}
+                          </div>
 
-            [
-              "V",
-              "Veylora Team",
-              "New update available",
-              "8:50 AM"
-            ],
+                          <div>
+                            <strong>
+                              ${escapeHtml(
+                                chat.name ||
+                                  "Conversation"
+                              )}
+                            </strong>
 
-            [
-              "BF",
-              "Best Friends",
-              "📷 Photo",
-              "8:20 AM"
-            ],
+                            <span>
+                              ${escapeHtml(
+                                chat.lastMessage ||
+                                  ""
+                              )}
+                            </span>
+                          </div>
 
-            [
-              "DC",
-              "Design Community",
-              "Alex: New challenge",
-              "7:45 AM"
-            ],
+                        </div>
 
-            [
-              "JS",
-              state.user?.name ||
-                "Veylora User",
-              "Typing...",
-              ""
-            ]
-          ]
-            .map(
-              ([av, name, msg, time]) => `
-                <div class="dash-row">
+                        <span class="dash-muted">
+                          ${escapeHtml(
+                            chat.time || ""
+                          )}
+                        </span>
 
-                  <div class="person">
+                      </div>
+                    `
+                  )
+                  .join("")
+              : `
+                <div class="empty-state">
 
-                    <div class="avatar">
-                      ${escapeHtml(av)}
-                    </div>
-
-                    <div>
-                      <strong>
-                        ${escapeHtml(name)}
-                      </strong>
-
-                      <span>
-                        ${escapeHtml(msg)}
-                      </span>
-                    </div>
-
+                  <div class="feature-icon">
+                    💬
                   </div>
 
-                  <span class="dash-muted">
-                    ${escapeHtml(time)}
-                  </span>
+                  <h3>
+                    No chats yet
+                  </h3>
+
+                  <p>
+                    Your real conversations
+                    will appear here.
+                  </p>
 
                 </div>
               `
-            )
-            .join("")}
+          }
 
         </section>
+
+        <!-- ================= CALLS ================= -->
 
         <section class="dash-card">
 
@@ -1308,17 +1487,19 @@ function homePage() {
           </div>
 
           <div
-            style="text-align:center;margin:9px 0 5px">
+            style="
+              text-align:center;
+              margin:9px 0 5px
+            ">
 
             <strong>
               ${escapeHtml(
-                state.user?.name ||
-                  "Veylora User"
+                userName
               )}
             </strong>
 
             <div class="dash-muted">
-              08:24
+              Ready
             </div>
 
           </div>
@@ -1376,10 +1557,12 @@ function homePage() {
 
         </section>
 
+        <!-- ================= SOCIAL FEED ================= -->
+
         <section class="dash-card">
 
           <div class="dash-title">
-            Social Feed (TikTok Style)
+            Social Feed
           </div>
 
           <div class="dash-tabs">
@@ -1392,13 +1575,13 @@ function homePage() {
             <div class="video-caption">
 
               <strong>
-                Nature Lover
+                Veylora Social
               </strong>
 
               <span>
-                The beauty of nature is endless
-                <br>
-                #travel #nature #adventure
+                Your real posts, likes,
+                comments and shares will
+                appear here.
               </span>
 
             </div>
@@ -1408,11 +1591,17 @@ function homePage() {
           <div class="dash-row">
 
             <span class="dash-muted">
-              ♥ 12.4K
+              ♥ ${formatCompactNumber(
+                dashboard.likes
+              )}
               &nbsp;
-              💬 512
+              💬 ${formatCompactNumber(
+                dashboard.comments
+              )}
               &nbsp;
-              ↗ 1.2K
+              ↗ ${formatCompactNumber(
+                dashboard.shares
+              )}
             </span>
 
             <button
@@ -1423,6 +1612,8 @@ function homePage() {
           </div>
 
         </section>
+
+        <!-- ================= AI ================= -->
 
         <section class="dash-card">
 
@@ -1440,18 +1631,22 @@ function homePage() {
 
             <textarea
               style="min-height:74px"
-              placeholder="Describe your idea...">A futuristic city at night with flying cars and neon lights</textarea>
+              placeholder="Describe your idea..."
+            ></textarea>
 
             <select>
               <option>
                 ◉ Cyberpunk
               </option>
+
               <option>
                 Cinematic
               </option>
+
               <option>
                 Anime
               </option>
+
               <option>
                 Realistic
               </option>
@@ -1461,9 +1656,11 @@ function homePage() {
               <option>
                 ◷ 5 Seconds
               </option>
+
               <option>
                 10 Seconds
               </option>
+
               <option>
                 15 Seconds
               </option>
@@ -1478,10 +1675,12 @@ function homePage() {
             <div
               class="dash-muted"
               style="text-align:center">
+
               Credits:
               ${formatNumber(
                 state.aiCredits
               )}
+
             </div>
 
             <div class="creation-strip">
@@ -1493,6 +1692,8 @@ function homePage() {
           </div>
 
         </section>
+
+        <!-- ================= STORIES ================= -->
 
         <section class="dash-card">
 
@@ -1510,17 +1711,22 @@ function homePage() {
               "Veylora"
             ]
               .map(
-                name => `
+                (name) => `
                   <div class="story-circle">
 
                     <div class="avatar">
                       ${escapeHtml(
-                        name.slice(0, 1)
+                        name.slice(
+                          0,
+                          1
+                        )
                       )}
                     </div>
 
                     <div>
-                      ${escapeHtml(name)}
+                      ${escapeHtml(
+                        name
+                      )}
                     </div>
 
                   </div>
@@ -1535,12 +1741,11 @@ function homePage() {
             <div class="video-caption">
 
               <strong>
-                Enjoying the beautiful
-                sunset ❤️
+                Share your next story ❤️
               </strong>
 
               <span>
-                Veylora Story • Just now
+                Your real Veylora Stories
               </span>
 
             </div>
@@ -1551,14 +1756,20 @@ function homePage() {
             class="full"
             style="margin-top:8px"
             data-open-page="stories">
-            Send message…
+            Open Stories
           </button>
 
         </section>
 
       </div>
 
+      <!-- =================================================
+           LOWER DASHBOARD
+      ================================================= -->
+
       <div class="lower-grid">
+
+        <!-- ================= GROUPS ================= -->
 
         <section class="dash-card">
 
@@ -1566,108 +1777,71 @@ function homePage() {
             Groups
           </div>
 
-          <div class="dash-row">
+          ${
+            communities.length
+              ? communities
+                  .slice(0, 5)
+                  .map(
+                    (community) => `
+                      <div class="dash-row">
 
-            <div class="person">
+                        <div class="person">
 
-              <div class="avatar sm">
-                FG
-              </div>
+                          <div class="avatar sm">
+                            ${escapeHtml(
+                              community.initials ||
+                                String(
+                                  community.name ||
+                                    "G"
+                                )
+                                  .slice(0, 2)
+                                  .toUpperCase()
+                            )}
+                          </div>
 
-              <div>
-                <strong>
-                  Family Group
-                </strong>
+                          <div>
 
-                <span>
-                  25 members
-                </span>
-              </div>
+                            <strong>
+                              ${escapeHtml(
+                                community.name ||
+                                  "Community"
+                              )}
+                            </strong>
 
-            </div>
+                            <span>
+                              ${escapeHtml(
+                                community.subtitle ||
+                                  `${formatNumber(
+                                    community.members ||
+                                      0
+                                  )} members`
+                              )}
+                            </span>
 
-            <span>⋮</span>
+                          </div>
 
-          </div>
+                        </div>
 
-          <div class="dash-row">
+                        <span>
+                          ›
+                        </span>
 
-            <div class="person">
+                      </div>
+                    `
+                  )
+                  .join("")
+              : `
+                <div class="empty-state">
+                  <div class="feature-icon">
+                    👥
+                  </div>
 
-              <div class="avatar sm">
-                M
-              </div>
-
-              <div>
-                <strong>
-                  Mom
-                </strong>
-
-                <span>
-                  Dinner at 7pm.
-                  Don't be late!
-                </span>
-              </div>
-
-            </div>
-
-            <span class="dash-muted">
-              9:04 AM
-            </span>
-
-          </div>
-
-          <div class="dash-row">
-
-            <div class="person">
-
-              <div class="avatar sm">
-                D
-              </div>
-
-              <div>
-                <strong>
-                  Dad
-                </strong>
-
-                <span>
-                  Okay, I'll be home soon.
-                </span>
-              </div>
-
-            </div>
-
-            <span class="dash-muted">
-              9:31 AM
-            </span>
-
-          </div>
-
-          <div class="dash-row">
-
-            <div class="person">
-
-              <div class="avatar sm">
-                Y
-              </div>
-
-              <div>
-                <strong>
-                  You
-                </strong>
-
-                <span>
-                  I'll help with the setup.
-                </span>
-              </div>
-
-            </div>
-
-            <span class="dash-muted">
-              9:31 AM
-            </span>
-
-          </div>
+                  <p>
+                    No groups yet.
+                  </p>
+                </div>
+              `
+          }
 
           <button
             class="full"
@@ -1676,6 +1850,8 @@ function homePage() {
           </button>
 
         </section>
+
+        <!-- ================= CHANNELS ================= -->
 
         <section class="dash-card">
 
@@ -1692,51 +1868,58 @@ function homePage() {
               </div>
 
               <div>
+
                 <strong>
                   Veylora Updates
                 </strong>
 
                 <span>
                   ${formatNumber(
-                    state.stats.channelFollowers
+                    dashboard.subscribers
                   )}
                   subscribers
                 </span>
+
               </div>
 
             </div>
 
-            <span>+</span>
+            <span>
+              +
+            </span>
 
           </div>
 
           <div
             class="card"
-            style="padding:10px;margin:7px 0">
+            style="
+              padding:10px;
+              margin:7px 0
+            ">
 
-            <strong style="font-size:10px">
-              🚀 New Update is Live!
+            <strong
+              style="font-size:10px">
+              Veylora Updates
             </strong>
 
             <p
-              style="font-size:8px;margin:6px 0">
+              style="
+                font-size:8px;
+                margin:6px 0
+              ">
 
-              • Better performance
-              <br>
-              • New AI tools
-              <br>
-              • Bug fixes
-              <br>
-              • And more!
+              Follow Veylora for
+              official updates.
 
             </p>
 
             <span class="dash-muted">
-              ♥ 2.5K
-              &nbsp;
-              💬 862
-              &nbsp;
-              9:30 AM
+
+              Subscribers:
+              ${formatCompactNumber(
+                dashboard.subscribers
+              )}
+
             </span>
 
           </div>
@@ -1744,10 +1927,12 @@ function homePage() {
           <button
             class="full"
             data-open-page="channels">
-            UNMUTE
+            OPEN CHANNELS
           </button>
 
         </section>
+
+        <!-- ================= COMMUNITIES ================= -->
 
         <section class="dash-card">
 
@@ -1755,63 +1940,68 @@ function homePage() {
             Communities
           </div>
 
-          ${[
-            [
-              "V",
-              "Veylora Community",
-              "8 groups • 4 channels"
-            ],
-            [
-              "G",
-              "General Chat",
-              "Active now"
-            ],
-            [
-              "G",
-              "Gaming Group",
-              "1.2K members"
-            ],
-            [
-              "A",
-              "Announcements",
-              "Channel • 95K subscribers"
-            ],
-            [
-              "D",
-              "Design Inspiration",
-              "Channel • 12K subscribers"
-            ]
-          ]
-            .map(
-              ([av, n, s]) => `
-                <div class="dash-row">
+          ${
+            communities.length
+              ? communities
+                  .map(
+                    (community) => `
+                      <div class="dash-row">
 
-                  <div class="person">
+                        <div class="person">
 
-                    <div class="avatar sm">
-                      ${escapeHtml(av)}
-                    </div>
+                          <div class="avatar sm">
+                            ${escapeHtml(
+                              community.initials ||
+                                "C"
+                            )}
+                          </div>
 
-                    <div>
-                      <strong>
-                        ${escapeHtml(n)}
-                      </strong>
+                          <div>
 
-                      <span>
-                        ${escapeHtml(s)}
-                      </span>
-                    </div>
+                            <strong>
+                              ${escapeHtml(
+                                community.name ||
+                                  "Community"
+                              )}
+                            </strong>
 
+                            <span>
+                              ${escapeHtml(
+                                community.subtitle ||
+                                  ""
+                              )}
+                            </span>
+
+                          </div>
+
+                        </div>
+
+                        <span>
+                          ›
+                        </span>
+
+                      </div>
+                    `
+                  )
+                  .join("")
+              : `
+                <div class="empty-state">
+
+                  <div class="feature-icon">
+                    🌐
                   </div>
 
-                  <span>›</span>
+                  <p>
+                    No communities yet.
+                  </p>
 
                 </div>
               `
-            )
-            .join("")}
+          }
 
         </section>
+
+        <!-- ================= OFFLINE ================= -->
 
         <section class="dash-card">
 
@@ -1820,18 +2010,23 @@ function homePage() {
           </div>
 
           <div
-            style="text-align:center;padding:8px">
+            style="
+              text-align:center;
+              padding:8px
+            ">
 
-            <div style="font-size:34px">
+            <div
+              style="font-size:34px">
               ⌁
             </div>
 
             <strong>
-              You are offline
+              Offline-ready
             </strong>
 
             <div class="dash-muted">
-              No internet connection
+              Saved data can sync when
+              internet returns.
             </div>
 
           </div>
@@ -1843,33 +2038,41 @@ function homePage() {
             ],
             [
               "Media",
-              "Photos & videos saved"
+              "Saved media can sync later"
             ],
             [
-              "Will sync when online",
-              "Everything will be updated"
+              "Sync",
+              "Updates when online"
             ]
           ]
             .map(
-              ([a, b]) => `
+              ([title, text]) => `
                 <div class="dash-row">
 
                   <span
-                    style="color:var(--green)">
+                    style="
+                      color:var(--green)
+                    ">
                     ✓
                   </span>
 
                   <div
-                    style="flex:1">
+                    style="
+                      flex:1
+                    ">
 
                     <strong
                       style="font-size:9px">
-                      ${escapeHtml(a)}
+                      ${escapeHtml(
+                        title
+                      )}
                     </strong>
 
                     <span
                       class="dash-muted">
-                      ${escapeHtml(b)}
+                      ${escapeHtml(
+                        text
+                      )}
                     </span>
 
                   </div>
@@ -1881,6 +2084,8 @@ function homePage() {
 
         </section>
 
+        <!-- ================= SECURITY ================= -->
+
         <section class="dash-card">
 
           <div class="dash-title">
@@ -1888,7 +2093,10 @@ function homePage() {
           </div>
 
           <div
-            style="text-align:center;padding:5px">
+            style="
+              text-align:center;
+              padding:5px
+            ">
 
             <div
               style="
@@ -1899,35 +2107,43 @@ function homePage() {
             </div>
 
             <strong
-              style="color:#62ef9c">
+              style="
+                color:#62ef9c
+              ">
               Your privacy is our priority
             </strong>
 
             <p
-              style="font-size:9px;margin:5px 0">
-              All messages and calls are
-              end-to-end encrypted
+              style="
+                font-size:9px;
+                margin:5px 0
+              ">
+              Secure Veylora communication.
             </p>
 
           </div>
 
           ${[
-            "No one can read your messages",
-            "Not even Veylora",
-            "Secure by default"
+            "Secure authentication",
+            "Protected messaging",
+            "Privacy controls"
           ]
             .map(
-              text => `
+              (text) => `
                 <div class="dash-row">
 
                   <span
-                    style="color:var(--green)">
+                    style="
+                      color:var(--green)
+                    ">
                     ✓
                   </span>
 
                   <span
                     style="font-size:9px">
-                    ${escapeHtml(text)}
+                    ${escapeHtml(
+                      text
+                    )}
                   </span>
 
                 </div>
@@ -1936,6 +2152,8 @@ function homePage() {
             .join("")}
 
         </section>
+
+        <!-- ================= DEVICES ================= -->
 
         <section class="dash-card">
 
@@ -1943,54 +2161,61 @@ function homePage() {
             Multi-Device
           </div>
 
-          ${[
-            [
-              "Android Phone",
-              "This device"
-            ],
-            [
-              "Veylora Web",
-              "Last active 2 min ago"
-            ],
-            [
-              "Windows Desktop",
-              "Last active 1 hour ago"
-            ],
-            [
-              "Android Tablet",
-              "Last active yesterday"
-            ]
-          ]
-            .map(
-              ([a, b]) => `
-                <div class="dash-row">
+          ${
+            devices.length
+              ? devices
+                  .map(
+                    (device) => `
+                      <div class="dash-row">
 
-                  <div class="person">
+                        <div class="person">
 
-                    <div class="avatar sm">
-                      ▣
-                    </div>
+                          <div class="avatar sm">
+                            ▣
+                          </div>
 
-                    <div>
+                          <div>
 
-                      <strong>
-                        ${escapeHtml(a)}
-                      </strong>
+                            <strong>
+                              ${escapeHtml(
+                                device.name ||
+                                  "Device"
+                              )}
+                            </strong>
 
-                      <span>
-                        ${escapeHtml(b)}
-                      </span>
+                            <span>
+                              ${escapeHtml(
+                                device.status ||
+                                  ""
+                              )}
+                            </span>
 
-                    </div>
+                          </div>
 
+                        </div>
+
+                        <span>
+                          ›
+                        </span>
+
+                      </div>
+                    `
+                  )
+                  .join("")
+              : `
+                <div class="empty-state">
+
+                  <div class="feature-icon">
+                    📱
                   </div>
 
-                  <span>›</span>
+                  <p>
+                    No linked devices.
+                  </p>
 
                 </div>
               `
-            )
-            .join("")}
+          }
 
           <button class="full">
             Link New Device
@@ -1998,10 +2223,12 @@ function homePage() {
 
         </section>
 
+        <!-- ================= PAYMENTS ================= -->
+
         <section class="dash-card">
 
           <div class="dash-title">
-            Payments (Localized)
+            Payments
           </div>
 
           <div class="statbox">
@@ -2011,7 +2238,9 @@ function homePage() {
             </span>
 
             <b>
-              ₦25,000.00
+              ${formatCurrency(
+                dashboard.walletBalance
+              )}
             </b>
 
           </div>
@@ -2022,66 +2251,83 @@ function homePage() {
 
             <div class="statbox">
               ⊕
-              <span>Top Up</span>
+              <span>
+                Top Up
+              </span>
             </div>
 
             <div class="statbox">
               ➤
-              <span>Send</span>
+              <span>
+                Send
+              </span>
             </div>
 
             <div class="statbox">
               ♙
-              <span>Request</span>
+              <span>
+                Request
+              </span>
             </div>
 
             <div class="statbox">
               ◷
-              <span>History</span>
+              <span>
+                History
+              </span>
             </div>
 
           </div>
 
-          <p style="font-size:8px">
+          <p
+            style="font-size:8px">
             Recent Transactions
           </p>
 
-          <div class="dash-row">
-            <span>
-              Premium Subscription
-            </span>
+          ${
+            transactions.length
+              ? transactions
+                  .slice(0, 5)
+                  .map(
+                    (transaction) => `
+                      <div class="dash-row">
 
-            <span>
-              −₦30,000
-            </span>
-          </div>
+                        <span>
+                          ${escapeHtml(
+                            transaction.description ||
+                              transaction.title ||
+                              "Transaction"
+                          )}
+                        </span>
 
-          <div class="dash-row">
+                        <span>
+                          ${escapeHtml(
+                            transaction.amountFormatted ||
+                              formatCurrency(
+                                transaction.amount ||
+                                  0
+                              )
+                          )}
+                        </span>
 
-            <span>
-              Wallet Top Up
-            </span>
+                      </div>
+                    `
+                  )
+                  .join("")
+              : `
+                <div class="empty-state">
 
-            <span
-              style="color:var(--green)">
-              +₦50,000
-            </span>
+                  <p>
+                    No transactions yet.
+                  </p>
 
-          </div>
-
-          <div class="dash-row">
-
-            <span>
-              AI Credit Purchase
-            </span>
-
-            <span>
-              −₦5,000
-            </span>
-
-          </div>
+                </div>
+              `
+          }
 
         </section>
+
+        <!-- ================= AI TOOLS ================= -->
 
         <section class="dash-card admin-mini">
 
@@ -2102,7 +2348,7 @@ function homePage() {
             class="feature-grid"
             style="
               grid-template-columns:
-              1fr 1fr 1fr;
+                1fr 1fr 1fr;
               gap:5px
             ">
 
@@ -2115,7 +2361,7 @@ function homePage() {
               ["🔊", "AI Voice"]
             ]
               .map(
-                ([i, t]) => `
+                ([icon, title]) => `
                   <button
                     class="card ai-tool"
                     style="padding:7px"
@@ -2124,12 +2370,14 @@ function homePage() {
                     <div
                       class="feature-icon"
                       style="font-size:20px">
-                      ${i}
+                      ${icon}
                     </div>
 
                     <strong
                       style="font-size:8px">
-                      ${escapeHtml(t)}
+                      ${escapeHtml(
+                        title
+                      )}
                     </strong>
 
                   </button>
@@ -2141,12 +2389,12 @@ function homePage() {
 
         </section>
 
-        <!-- REAL DATABASE STATISTICS -->
+        <!-- ================= ADMIN ================= -->
 
         <section class="dash-card admin-mini">
 
           <div class="dash-title">
-            Veylora Live Statistics
+            Admin Dashboard
           </div>
 
           <div class="statline">
@@ -2158,14 +2406,10 @@ function homePage() {
               </span>
 
               <b>
-                ${formatNumber(
-                  state.stats.totalUsers
+                ${formatCompactNumber(
+                  dashboard.admin.totalUsers
                 )}
               </b>
-
-              <span>
-                Registered accounts
-              </span>
 
             </div>
 
@@ -2176,14 +2420,10 @@ function homePage() {
               </span>
 
               <b>
-                ${formatNumber(
-                  state.stats.activeUsers
+                ${formatCompactNumber(
+                  dashboard.admin.activeUsers
                 )}
               </b>
-
-              <span>
-                Active recently
-              </span>
 
             </div>
 
@@ -2194,32 +2434,24 @@ function homePage() {
               </span>
 
               <b>
-                ${formatNumber(
-                  state.stats.totalMessages
+                ${formatCompactNumber(
+                  dashboard.admin.messages
                 )}
               </b>
-
-              <span>
-                Total messages
-              </span>
 
             </div>
 
             <div class="statbox">
 
               <span>
-                Followers
+                Revenue
               </span>
 
               <b>
-                ${formatNumber(
-                  state.stats.totalFollowers
+                ${formatCurrency(
+                  dashboard.admin.revenue
                 )}
               </b>
-
-              <span>
-                Total followers
-              </span>
 
             </div>
 
@@ -2234,97 +2466,107 @@ function homePage() {
             class="dash-muted"
             style="margin-top:7px">
 
-            Live database statistics •
-            Updated after login and signup
+            Live figures are supplied by
+            the Veylora backend.
 
           </div>
 
         </section>
 
+        <!-- ================= PREMIUM ================= -->
+
         <section class="dash-card admin-mini">
 
           <div class="dash-title">
-            Premium Plans (Localized)
+            Premium Plans
           </div>
 
           <div
             class="feature-grid"
             style="
               grid-template-columns:
-              repeat(3,1fr);
+                repeat(3,1fr);
               gap:6px
             ">
 
-            ${[
-              [
-                "Go",
-                "₦10,000",
-                "Basic Power for Everyone"
-              ],
-              [
-                "Pro",
-                "₦30,000",
-                "More Power. More Possibilities."
-              ],
-              [
-                "Ultra",
-                "₦50,000",
-                "Ultimate Power. No Limits."
-              ]
-            ]
-              .map(
-                ([n, p, s]) => `
+            ${
+              dashboard.premium.length
+                ? dashboard.premium
+                    .map(
+                      (plan) => `
+                        <div
+                          class="plan-card"
+                          style="padding:9px">
+
+                          <strong>
+                            ${escapeHtml(
+                              plan.name ||
+                                "Plan"
+                            )}
+                          </strong>
+
+                          <div class="price">
+
+                            ${escapeHtml(
+                              plan.priceFormatted ||
+                                formatCurrency(
+                                  plan.price ||
+                                    0
+                                )
+                            )}
+
+                            <small>
+                              /month
+                            </small>
+
+                          </div>
+
+                          <span class="dash-muted">
+                            ${escapeHtml(
+                              plan.description ||
+                                ""
+                            )}
+                          </span>
+
+                          <button
+                            class="primary full"
+                            style="margin-top:7px">
+                            Get ${escapeHtml(
+                              plan.name ||
+                                "Plan"
+                            )}
+                          </button>
+
+                        </div>
+                      `
+                    )
+                    .join("")
+                : `
                   <div
-                    class="plan-card"
-                    style="padding:9px">
+                    class="empty-state"
+                    style="
+                      grid-column:1/-1
+                    ">
 
-                    <strong>
-                      ${n}
-                    </strong>
-
-                    <div class="price">
-                      ${p}
-                      <small>
-                        /month
-                      </small>
+                    <div
+                      class="feature-icon">
+                      💎
                     </div>
 
-                    <span
-                      class="dash-muted">
-                      ${escapeHtml(s)}
-                    </span>
-
-                    <ul>
-                      <li>
-                        ✓ Messaging
-                      </li>
-                      <li>
-                        ✓ Calls
-                      </li>
-                      <li>
-                        ✓ Stories
-                      </li>
-                      <li>
-                        ✓ AI Features
-                      </li>
-                      <li>
-                        ✓ Cloud Storage
-                      </li>
-                    </ul>
-
-                    <button
-                      class="primary full">
-                      Get ${n}
-                    </button>
+                    <p>
+                      Premium plans will
+                      appear here.
+                    </p>
 
                   </div>
                 `
-              )
-              .join("")}
+            }
 
           </div>
 
         </section>
+
+        <!-- ================= FEATURES ================= -->
 
         <section class="dash-card admin-mini">
 
@@ -2337,39 +2579,46 @@ function homePage() {
             ${[
               [
                 "☎",
-                "Phone Number Login (All Countries)",
+                "Phone Number Login",
                 "OTP via SMS or WhatsApp"
               ],
+
               [
                 "⌁",
                 "Hybrid Offline/Online Mode",
-                "Works offline, syncs when online"
+                "Works offline and syncs online"
               ],
+
               [
                 "⌕",
                 "Universal Search",
-                "Search messages, groups, users, media"
+                "Search messages, groups, users and media"
               ],
+
               [
                 "♟",
                 "Smart Notifications",
                 "Never miss what matters"
               ],
+
               [
                 "▣",
                 "Backup & Restore",
                 "Secure cloud backup"
               ],
+
               [
                 "◉",
                 "Privacy Controls",
                 "Your data, your control"
               ],
+
               [
                 "◈",
                 "Custom Themes",
                 "Light, Dark & Custom"
               ],
+
               [
                 "文",
                 "Multi-Language",
@@ -2377,21 +2626,25 @@ function homePage() {
               ]
             ]
               .map(
-                ([i, a, b]) => `
+                ([icon, title, description]) => `
                   <div class="feature-item">
 
                     <div class="icon">
-                      ${i}
+                      ${icon}
                     </div>
 
                     <div>
 
                       <b>
-                        ${escapeHtml(a)}
+                        ${escapeHtml(
+                          title
+                        )}
                       </b>
 
                       <span>
-                        ${escapeHtml(b)}
+                        ${escapeHtml(
+                          description
+                        )}
                       </span>
 
                     </div>
@@ -2406,6 +2659,8 @@ function homePage() {
         </section>
 
       </div>
+
+      <!-- ================= FOOTER ================= -->
 
       <div class="footer-tech">
 
@@ -2447,8 +2702,6 @@ function homePage() {
 
         <div class="tech">
           PAYMENTS &amp; SECURITY
-          &nbsp;
-          Paystack • Flutterwave • SSL/TLS
         </div>
 
         <div class="tech">
@@ -2463,15 +2716,96 @@ function homePage() {
     .querySelectorAll(
       "[data-open-page]"
     )
-    .forEach(element => {
-      element.addEventListener(
-        "click",
-        () =>
-          showPage(
-            element.dataset.openPage
-          )
-      );
-    });
+    .forEach(
+      (element) => {
+        element.addEventListener(
+          "click",
+          () =>
+            showPage(
+              element.dataset.openPage
+            )
+        );
+      }
+    );
+}
+
+/* =========================================================
+   CHAT PAGE
+========================================================= */
+
+function chatPage() {
+  shell(
+    "chat",
+    `
+      <section class="panel">
+
+        <div class="panel-header">
+
+          <div>
+
+            <h2>
+              Messages
+            </h2>
+
+            <p>
+              Real-time Veylora chat
+            </p>
+
+          </div>
+
+          <span class="online-dot">
+            ● Online
+          </span>
+
+        </div>
+
+        <div class="messages"></div>
+
+        <form
+          id="messageForm"
+          class="message-form">
+
+          <input
+            id="messageInput"
+            type="text"
+            autocomplete="off"
+            placeholder="Type a message..."
+            maxlength="5000"
+            required
+          >
+
+          <button
+            class="primary"
+            type="submit">
+            Send
+          </button>
+
+        </form>
+
+      </section>
+    `
+  );
+
+  renderMessagesOnly();
+
+  document
+    .getElementById(
+      "messageForm"
+    )
+    ?.addEventListener(
+      "submit",
+      sendMessage
+    );
+
+  if (
+    socket &&
+    socket.connected
+  ) {
+    socket.emit(
+      "conversation:join",
+      state.currentConversationId
+    );
+  }
 }
 
 /* =========================================================
@@ -2487,6 +2821,7 @@ function callsPage() {
         <div class="panel-header">
 
           <div>
+
             <h2>
               Calls
             </h2>
@@ -2494,6 +2829,7 @@ function callsPage() {
             <p>
               Voice and video calling
             </p>
+
           </div>
 
         </div>
@@ -2546,6 +2882,25 @@ function callsPage() {
 
         </div>
 
+        <div class="card">
+
+          <h3>
+            Call signaling
+          </h3>
+
+          <p>
+            WebRTC signaling is connected
+            through your Veylora backend.
+          </p>
+
+          <p>
+            Add a TURN server in the backend
+            environment for reliable calls
+            across different networks.
+          </p>
+
+        </div>
+
       </section>
     `
   );
@@ -2588,6 +2943,7 @@ function storiesPage() {
         <div class="panel-header">
 
           <div>
+
             <h2>
               Stories
             </h2>
@@ -2595,6 +2951,7 @@ function storiesPage() {
             <p>
               Share updates with your contacts.
             </p>
+
           </div>
 
         </div>
@@ -2603,7 +2960,7 @@ function storiesPage() {
 
           ${state.stories
             .map(
-              story => `
+              (story) => `
                 <article class="card">
 
                   <div class="feature-icon">
@@ -2669,7 +3026,7 @@ function storiesPage() {
     )
     ?.addEventListener(
       "submit",
-      async event => {
+      (event) => {
         event.preventDefault();
 
         const input =
@@ -2680,7 +3037,9 @@ function storiesPage() {
         const text =
           input?.value.trim();
 
-        if (!text) return;
+        if (!text) {
+          return;
+        }
 
         state.stories.unshift({
           name:
@@ -2693,8 +3052,6 @@ function storiesPage() {
         });
 
         saveLocalState();
-
-        await loadStats();
 
         storiesPage();
       }
@@ -2714,6 +3071,7 @@ function channelsPage() {
         <div class="panel-header">
 
           <div>
+
             <h2>
               Channels
             </h2>
@@ -2721,6 +3079,7 @@ function channelsPage() {
             <p>
               Follow creators and communities.
             </p>
+
           </div>
 
         </div>
@@ -2729,7 +3088,7 @@ function channelsPage() {
 
           ${state.channels
             .map(
-              channel => `
+              (channel) => `
                 <article class="card">
 
                   <div class="feature-icon">
@@ -2787,6 +3146,7 @@ function aiPage() {
         <div class="panel-header">
 
           <div>
+
             <h2>
               Veylora AI
             </h2>
@@ -2794,6 +3154,7 @@ function aiPage() {
             <p>
               Your AI assistant.
             </p>
+
           </div>
 
           <div class="credit-card small">
@@ -2866,7 +3227,9 @@ function aiPage() {
   );
 
   document
-    .getElementById("aiForm")
+    .getElementById(
+      "aiForm"
+    )
     ?.addEventListener(
       "submit",
       generateAI
@@ -2878,13 +3241,17 @@ async function generateAI(event) {
 
   const prompt =
     document
-      .getElementById("aiPrompt")
+      .getElementById(
+        "aiPrompt"
+      )
       ?.value.trim();
 
   const type =
-    document.getElementById(
-      "aiType"
-    )?.value;
+    document
+      .getElementById(
+        "aiType"
+      )
+      ?.value;
 
   const button =
     document.getElementById(
@@ -2896,7 +3263,9 @@ async function generateAI(event) {
       "aiResult"
     );
 
-  if (!prompt) return;
+  if (!prompt) {
+    return;
+  }
 
   setLoading(
     button,
@@ -2968,6 +3337,7 @@ function premiumPage() {
         <div class="panel-header">
 
           <div>
+
             <h2>
               Veylora Premium
             </h2>
@@ -2975,6 +3345,7 @@ function premiumPage() {
             <p>
               Upgrade your Veylora experience.
             </p>
+
           </div>
 
         </div>
@@ -3047,6 +3418,9 @@ function premiumPage() {
 ========================================================= */
 
 function adminPage() {
+  const admin =
+    state.dashboard.admin;
+
   shell(
     "admin",
     `
@@ -3055,6 +3429,7 @@ function adminPage() {
         <div class="panel-header">
 
           <div>
+
             <h2>
               Admin
             </h2>
@@ -3062,6 +3437,7 @@ function adminPage() {
             <p>
               Veylora administration.
             </p>
+
           </div>
 
         </div>
@@ -3097,16 +3473,16 @@ function adminPage() {
           <article class="card">
 
             <div class="feature-icon">
-              📊
+              🔌
             </div>
 
             <h3>
-              Total Users
+              Backend
             </h3>
 
             <p>
-              ${formatNumber(
-                state.stats.totalUsers
+              ${escapeHtml(
+                API_URL
               )}
             </p>
 
@@ -3119,13 +3495,15 @@ function adminPage() {
             </div>
 
             <h3>
-              Messages
+              Real-time
             </h3>
 
             <p>
-              ${formatNumber(
-                state.stats.totalMessages
-              )}
+              ${
+                socket?.connected
+                  ? "Socket.IO connected"
+                  : "Socket.IO disconnected"
+              }
             </p>
 
           </article>
@@ -3137,12 +3515,12 @@ function adminPage() {
             </div>
 
             <h3>
-              Followers
+              Users
             </h3>
 
             <p>
               ${formatNumber(
-                state.stats.totalFollowers
+                admin.totalUsers
               )}
             </p>
 
@@ -3151,16 +3529,16 @@ function adminPage() {
           <article class="card">
 
             <div class="feature-icon">
-              🔌
+              💰
             </div>
 
             <h3>
-              Backend
+              Revenue
             </h3>
 
             <p>
-              ${escapeHtml(
-                API_URL
+              ${formatCurrency(
+                admin.revenue
               )}
             </p>
 
@@ -3225,83 +3603,6 @@ function showPage(page) {
 }
 
 /* =========================================================
-   CHAT PAGE
-========================================================= */
-
-function chatPage() {
-  shell(
-    "chat",
-    `
-      <section class="panel">
-
-        <div class="panel-header">
-
-          <div>
-            <h2>
-              Messages
-            </h2>
-
-            <p>
-              Real-time Veylora chat
-            </p>
-          </div>
-
-          <span class="online-dot">
-            ● Online
-          </span>
-
-        </div>
-
-        <div class="messages"></div>
-
-        <form
-          id="messageForm"
-          class="message-form">
-
-          <input
-            id="messageInput"
-            type="text"
-            autocomplete="off"
-            placeholder="Type a message..."
-            maxlength="5000"
-            required
-          >
-
-          <button
-            class="primary"
-            type="submit">
-            Send
-          </button>
-
-        </form>
-
-      </section>
-    `
-  );
-
-  renderMessagesOnly();
-
-  document
-    .getElementById(
-      "messageForm"
-    )
-    ?.addEventListener(
-      "submit",
-      sendMessage
-    );
-
-  if (
-    socket &&
-    socket.connected
-  ) {
-    socket.emit(
-      "conversation:join",
-      state.currentConversationId
-    );
-  }
-}
-
-/* =========================================================
    SESSION RESTORE
 ========================================================= */
 
@@ -3320,17 +3621,13 @@ async function restoreSession() {
       );
 
     state.user =
-      data.user;
+      data.user || null;
 
     connectSocket();
 
     await loadMessages();
 
-    /*
-      Get real numbers whenever
-      an existing session is restored.
-    */
-    await loadStats();
+    await loadDashboardData();
 
     showPage("home");
   } catch (error) {
@@ -3346,25 +3643,33 @@ async function restoreSession() {
     state.token = "";
     state.user = null;
 
+    resetDashboardData();
+
     loginPage();
   }
 }
 
 /* =========================================================
-   ONLINE / OFFLINE
+   ONLINE / OFFLINE STATUS
 ========================================================= */
 
 window.addEventListener(
   "online",
   async () => {
     console.log(
-      "Veylora is back online."
+      "Veylora is online"
     );
 
     if (state.token) {
-      connectSocket();
+      await loadDashboardData();
 
-      await loadStats();
+      if (
+        document.querySelector(
+          ".dashboard"
+        )
+      ) {
+        homePage();
+      }
     }
   }
 );
@@ -3373,7 +3678,7 @@ window.addEventListener(
   "offline",
   () => {
     console.log(
-      "Veylora is offline."
+      "Veylora is offline"
     );
   }
 );
