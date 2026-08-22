@@ -1,0 +1,133 @@
+app.get(
+  "/api/stats",
+  authenticateToken,
+  async (req, res) => {
+    try {
+      const [
+        totalUsers,
+        totalMessages,
+        totalStories,
+        totalChannels
+      ] = await Promise.all([
+        User.countDocuments(),
+
+        Message.countDocuments(),
+
+        Story
+          ? Story.countDocuments()
+          : 0,
+
+        Channel
+          ? Channel.countDocuments()
+          : 0
+      ]);
+
+      /*
+       * Users active within the last
+       * 15 minutes.
+       *
+       * This assumes your User model
+       * has a lastActiveAt field.
+       */
+      const activeSince =
+        new Date(
+          Date.now() -
+          15 * 60 * 1000
+        );
+
+      const activeUsers =
+        await User.countDocuments({
+          lastActiveAt: {
+            $gte: activeSince
+          }
+        });
+
+      /*
+       * If your User model has a
+       * followers array, this counts
+       * all follower relationships.
+       */
+      const followerResult =
+        await User.aggregate([
+          {
+            $project: {
+              followerCount: {
+                $size: {
+                  $ifNull: [
+                    "$followers",
+                    []
+                  ]
+                }
+              }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              totalFollowers: {
+                $sum:
+                  "$followerCount"
+              }
+            }
+          }
+        ]);
+
+      const totalFollowers =
+        followerResult[0]
+          ?.totalFollowers || 0;
+
+      /*
+       * Channel subscribers.
+       */
+      const channelResult =
+        await Channel.aggregate([
+          {
+            $project: {
+              subscriberCount: {
+                $size: {
+                  $ifNull: [
+                    "$subscribers",
+                    []
+                  ]
+                }
+              }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              channelFollowers: {
+                $sum:
+                  "$subscriberCount"
+              }
+            }
+          }
+        ]);
+
+      const channelFollowers =
+        channelResult[0]
+          ?.channelFollowers || 0;
+
+      res.json({
+        totalUsers,
+        activeUsers,
+        totalMessages,
+        totalFollowers,
+        channelFollowers,
+        totalChannels,
+        totalStories
+      });
+
+    } catch (error) {
+      console.error(
+        "Stats error:",
+        error
+      );
+
+      res.status(500).json({
+        error:
+          "Could not load statistics"
+      });
+    }
+  }
+);
