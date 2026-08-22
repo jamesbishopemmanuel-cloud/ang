@@ -5,18 +5,13 @@ on:
     branches:
       - main
       - master
-
   pull_request:
-
   workflow_dispatch:
 
-
 jobs:
-
   build:
 
     runs-on: ubuntu-latest
-
 
     steps:
 
@@ -27,71 +22,51 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: 22
 
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
-          java-version: "17"
+          distribution: temurin
+          java-version: 17
 
 
-      - name: Install Frontend Dependencies
-        run: |
-          npm install
-          npm install @capacitor/core@7.4.0
-          npm install @capacitor/cli@7.4.0 --save-dev
-          npm install @capacitor/android@7.4.0
+      - name: Install packages
+        run: npm install
 
 
-      - name: Verify Required Files
+      - name: Verify files
         run: |
           test -f package.json
           test -f index.html
           test -f src/main.js
           test -f src/style.css
-          test -f capacitor.config.ts
-
-
-      - name: Check Node and NPM
-        run: |
-          node -v
-          npm -v
+          test -f capacitor.config.js
 
 
       - name: Check Capacitor
-        run: |
-          npx cap --version
+        run: npx cap --version
 
 
-      - name: Build Veylora Web App
-        run: |
-          npm run build
+      - name: Build Web App
+        run: npm run build
 
 
-      - name: Add Android Platform
+      - name: Add Android
         run: |
           if [ ! -d android ]; then
             npx cap add android
           fi
 
 
-      - name: Sync Capacitor Android
-        run: |
-          npx cap sync android
+      - name: Sync Android
+        run: npx cap sync android
 
 
-      - name: Prepare Gradle
+      - name: Build APK
         working-directory: android
-        run: |
-          chmod +x gradlew
-
-
-      - name: Build Debug APK
-        working-directory: android
-        run: |
-          ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon
 
 
       - name: Upload APK
@@ -99,11 +74,3 @@ jobs:
         with:
           name: veylora-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-
-
-      - name: Upload Web Build
-        uses: actions/upload-artifact@v4
-        with:
-          name: veylora-web-dist
-          path: dist/
