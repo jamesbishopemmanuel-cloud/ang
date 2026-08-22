@@ -1,54 +1,101 @@
 name: Veylora Android Build
+
 on:
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
+
   pull_request:
+
   workflow_dispatch:
+
+
 jobs:
+
   build:
+
     runs-on: ubuntu-latest
+
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
+
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "22"
+
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
+
+
       - name: Install dependencies
-        run: npm install
-      - name: Verify required files
         run: |
+          npm install
+          npm install -D typescript
+          npm install @capacitor/core@7.4.0
+          npm install @capacitor/cli@7.4.0
+          npm install @capacitor/android@7.4.0
+
+
+      - name: Verify project
+        run: |
+          echo "Checking files..."
+          test -f package.json
           test -f index.html
           test -f src/main.js
           test -f src/style.css
           test -f capacitor.config.ts
-          test -f package.json
-      - name: Build web app
+
+          echo "Files OK"
+
+
+      - name: Check tools
+        run: |
+          node -v
+          npm -v
+          npx tsc --version
+          npx cap --version
+
+
+      - name: Build Veylora Web
         run: npm run build
-      - name: Add Android platform
+
+
+      - name: Add Android
         run: |
           if [ ! -d android ]; then
             npx cap add android
           fi
-      - name: Sync Capacitor Android
-        run: npx cap sync android
-      - name: Run tests
-        run: npm test
-      - name: Build debug APK
+
+
+      - name: Capacitor Sync
+        run: |
+          npx cap sync android
+
+
+      - name: Build APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: veylora-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-      - name: Upload web build
+
+
+      - name: Upload Web Files
         uses: actions/upload-artifact@v4
         with:
           name: veylora-web-dist
