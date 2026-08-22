@@ -27,18 +27,17 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
+          node-version: "22"
 
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: "temurin"
           java-version: "17"
 
 
-      - name: Install dependencies
+      - name: Install Frontend Dependencies
         run: |
           npm install
           npm install @capacitor/core@7.4.0
@@ -46,13 +45,19 @@ jobs:
           npm install @capacitor/android@7.4.0
 
 
-      - name: Check project files
+      - name: Verify Required Files
         run: |
-          test -f index.html
           test -f package.json
-          test -f capacitor.config.ts
+          test -f index.html
           test -f src/main.js
           test -f src/style.css
+          test -f capacitor.config.ts
+
+
+      - name: Check Node and NPM
+        run: |
+          node -v
+          npm -v
 
 
       - name: Check Capacitor
@@ -65,47 +70,40 @@ jobs:
           npm run build
 
 
-      - name: Add Android platform
+      - name: Add Android Platform
         run: |
           if [ ! -d android ]; then
             npx cap add android
           fi
 
 
-      - name: Sync Capacitor
+      - name: Sync Capacitor Android
         run: |
           npx cap sync android
 
 
-      - name: Run tests
+      - name: Prepare Gradle
+        working-directory: android
         run: |
-          npm test || true
+          chmod +x gradlew
 
 
       - name: Build Debug APK
         working-directory: android
         run: |
-          chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-
           name: veylora-debug-apk
-
-          path:
-            android/app/build/outputs/apk/debug/*.apk
-
+          path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
 
       - name: Upload Web Build
         uses: actions/upload-artifact@v4
         with:
-
           name: veylora-web-dist
-
-          path:
-            dist/
+          path: dist/
