@@ -1,0 +1,15 @@
+Veylora iPhone-style interface update
+
+1. Replace the existing root style.css with this style.css.
+2. Replace the Home page function in main.js with homePage-replacement.js.
+3. Keep your existing authentication, Socket.IO, Android and package files.
+4. The interface now uses:
+   - iOS/SF Pro-style typography
+   - glassmorphism panels
+   - spring-like touch animations
+   - safer iPhone-area spacing
+   - mobile bottom navigation
+   - larger touch targets
+   - smoother page/message animations
+   - iPhone-like rounded cards and controls
+   - dark purple/pink Veylora visual system
