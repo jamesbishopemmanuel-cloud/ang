@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum Plan {
+  FREE
+  PRO
+  ULTRA
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  FILE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  EXPIRED
+  TRIAL
+  PENDING
+}
+
+model User {
+  id              String         @id @default(cuid())
+  phone           String         @unique
+  name            String
+  passwordHash    String?
+  role            Role           @default(USER)
+  plan            Plan           @default(FREE)
+  aiCredits       Int            @default(100)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  messages        Message[]
+  stories         Story[]
+  channels        Channel[]
+  subscriptions   Subscription[]
+  aiUsages        AIUsage[]
+}
+
+model Message {
+  id          String      @id @default(cuid())
+  senderId    String
+  recipientId String
+  body        String
+  type        MessageType @default(TEXT)
+  createdAt   DateTime    @default(now())
+  readAt      DateTime?
+
+  sender      User        @relation(fields: [senderId], references: [id])
+}
+
+model Story {
+  id          String    @id @default(cuid())
+  userId      String
+  text        String
+  mediaUrl    String?
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id])
+}
+
+model Channel {
+  id          String    @id @default(cuid())
+  ownerId     String
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+
+  owner       User      @relation(fields: [ownerId], references: [id])
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String
+  plan                 Plan
+  status               SubscriptionStatus
+  currency             String
+  amount               Int
+  startsAt             DateTime
+  endsAt               DateTime?
+  providerReference    String?            @unique
+  createdAt            DateTime           @default(now())
+
+  user                 User               @relation(fields: [userId], references: [id])
+}
+
+model AIUsage {
+  id          String   @id @default(cuid())
+  userId      String
+  feature     String
+  creditsUsed Int
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+}
+
+model OTP {
+  id         String   @id @default(cuid())
+  phone      String
+  codeHash   String
+  expiresAt  DateTime
+  attempts   Int      @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime @default(now())
+
+  @@index([phone])
+}
