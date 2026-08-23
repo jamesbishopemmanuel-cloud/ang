@@ -2,15 +2,7 @@ const config = {
   appId: "com.veylora.app",
   appName: "Veylora",
   webDir: "dist",
-  bundledWebRuntime: false,
-
-  server: {
-    androidScheme: "https"
-  },
-
-  android: {
-    allowMixedContent: true
-  }
+  bundledWebRuntime: false
 };
 
-module.exports = config; 
+module.exports = config;
