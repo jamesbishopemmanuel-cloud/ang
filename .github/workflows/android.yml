@@ -27,24 +27,57 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
-      - name: Show project
+      - name: Show project files
         run: |
+          echo "Project root:"
           pwd
-          ls -la
-          echo "----- package.json -----"
-          cat package.json
+          echo ""
+          echo "Files:"
+          find . -maxdepth 4 -type f | sort
+
+      - name: Remove old TypeScript Capacitor config
+        run: |
+          rm -f capacitor.config.ts
+          rm -f capacitor.config.mts
+          rm -f capacitor.config.cts
+
+          find . -type f \
+            \( -name "capacitor.config.ts" \
+            -o -name "capacitor.config.mts" \
+            -o -name "capacitor.config.cts" \) \
+            -delete
 
       - name: Install dependencies
         run: |
           npm install
-          npm install --save @capacitor/core@7.4.0 @capacitor/android@7.4.0
-          npm install --save-dev @capacitor/cli@7.4.0
+          npm install @capacitor/core@7.4.0 @capacitor/android@7.4.0
+          npm install -D @capacitor/cli@7.4.0
 
-      - name: Verify Capacitor CLI
+      - name: Create Capacitor JavaScript config
         run: |
-          test -d node_modules/@capacitor/cli
-          test -f node_modules/@capacitor/cli/bin/capacitor
-          node node_modules/@capacitor/cli/bin/capacitor --version
+          cat > capacitor.config.js <<'EOF'
+          const config = {
+            appId: "com.veylora.app",
+            appName: "Veylora",
+            webDir: "dist",
+            server: {
+              androidScheme: "https"
+            },
+            android: {
+              allowMixedContent: true
+            }
+          };
+
+          export default config;
+          EOF
+
+      - name: Verify Capacitor configuration
+        run: |
+          test -f capacitor.config.js
+          test ! -f capacitor.config.ts
+
+          echo "Capacitor configuration:"
+          cat capacitor.config.js
 
       - name: Verify required files
         run: |
@@ -54,10 +87,15 @@ jobs:
           test -f src/style.css
           test -f capacitor.config.js
 
-      - name: Build web application
+      - name: Verify Capacitor CLI
+        run: |
+          test -d node_modules/@capacitor/cli
+          node node_modules/@capacitor/cli/bin/capacitor --version
+
+      - name: Build Veylora web application
         run: npm run build
 
-      - name: Add Android platform
+      - name: Create Android platform
         run: |
           if [ ! -d android ]; then
             node node_modules/@capacitor/cli/bin/capacitor add android
@@ -69,11 +107,22 @@ jobs:
 
       - name: Prepare Gradle
         working-directory: android
-        run: chmod +x gradlew
+        run: |
+          chmod +x gradlew
 
-      - name: Build debug APK
+      - name: Build Debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: |
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Verify APK
+        run: |
+          find android/app/build/outputs/apk/debug \
+            -type f \
+            -name "*.apk" \
+            -print
+
+          test -n "$(find android/app/build/outputs/apk/debug -type f -name '*.apk')"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -82,7 +131,7 @@ jobs:
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-      - name: Upload web build
+      - name: Upload Web Build
         uses: actions/upload-artifact@v4
         with:
           name: veylora-web-dist
