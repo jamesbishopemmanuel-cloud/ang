@@ -5,26 +5,29 @@ on:
     branches:
       - main
       - master
+
   pull_request:
+
   workflow_dispatch:
 
-permissions:
-  contents: read
 
 jobs:
+
   build:
-    name: Build Veylora Android APK
+
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
+
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -32,72 +35,52 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Verify project files
-        shell: bash
+
+      # Creates package-lock.json automatically if missing
+      - name: Install dependencies
         run: |
-          set -e
+          npm install
+          test -f package-lock.json
+          echo "package-lock.json created successfully"
 
-          echo "Checking Veylora project..."
 
+      - name: Verify project files
+        run: |
           test -f package.json
           test -f index.html
-          test -f capacitor.config.js
           test -f src/main.js
           test -f src/style.css
+          test -f capacitor.config.ts
+          echo "Required files found"
 
-          echo "All required files found."
 
-      - name: Install dependencies
-        run: npm install
-
-      - name: Verify Capacitor installation
-        shell: bash
+      - name: Check Capacitor
         run: |
-          set -e
-
           test -d node_modules/@capacitor/core
           test -d node_modules/@capacitor/android
           test -d node_modules/@capacitor/cli
+          echo "Capacitor installed"
 
-          echo "Capacitor packages installed."
 
-          node node_modules/@capacitor/cli/bin/capacitor --version
-
-      - name: Build web application
+      - name: Build Web App
         run: npm run build
 
-      - name: Create Android platform
-        shell: bash
-        run: |
-          set -e
 
+      - name: Add Android Platform
+        run: |
           if [ ! -d android ]; then
-            echo "Android platform does not exist. Creating it..."
-            node node_modules/@capacitor/cli/bin/capacitor add android
-          else
-            echo "Android platform already exists."
+            npx cap add android
           fi
 
+
       - name: Sync Capacitor
-        run: |
-          node node_modules/@capacitor/cli/bin/capacitor sync android
+        run: npx cap sync android
 
-      - name: Make Gradle executable
-        run: chmod +x android/gradlew
 
-      - name: Build debug APK
+      - name: Build Debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: ./gradlew assembleDebug --no-daemon
 
-      - name: Find APK
-        shell: bash
-        run: |
-          set -e
-
-          echo "APK files found:"
-          find android/app/build/outputs/apk -type f -name "*.apk" -print
-
-          test -n "$(find android/app/build/outputs/apk -type f -name "*.apk" -print -quit)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
@@ -106,9 +89,9 @@ jobs:
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-      - name: Upload web build
+
+      - name: Upload Web Build
         uses: actions/upload-artifact@v4
         with:
           name: veylora-web-dist
           path: dist/
-          if-no-files-found: error
