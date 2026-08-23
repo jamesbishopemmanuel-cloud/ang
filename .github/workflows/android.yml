@@ -5,7 +5,9 @@ on:
     branches:
       - main
       - master
+
   pull_request:
+
   workflow_dispatch:
 
 permissions:
@@ -17,98 +19,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      # =========================================================
-      # CHECKOUT
-      # =========================================================
-
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # =========================================================
-      # NODE.JS
-      # =========================================================
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: 22
 
-      # =========================================================
-      # JAVA 17
-      # =========================================================
-
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin"
+          distribution: temurin
           java-version: "17"
+          cache: gradle
 
-      # =========================================================
-      # SHOW PROJECT
-      # =========================================================
-
-      - name: Inspect project
+      - name: Show environment
         run: |
-          set -e
+          node --version
+          npm --version
+          java -version
 
-          echo "========================================"
-          echo "VEY LORA PROJECT"
-          echo "========================================"
-
-          echo ""
-          echo "Current directory:"
-          pwd
-
-          echo ""
-          echo "Root files:"
-          ls -la
-
-          echo ""
-          echo "Source files:"
-          if [ -d src ]; then
-            find src -maxdepth 2 -type f -print
-          fi
-
-      # =========================================================
-      # REMOVE CONFLICTING CAPACITOR CONFIGS
-      # =========================================================
-
-      - name: Prepare Capacitor configuration
-        run: |
-          set -e
-
-          echo "Removing conflicting Capacitor configuration files..."
-
-          rm -f capacitor.config.ts
-          rm -f capacitor.config.mjs
-          rm -f capacitor.config.cjs
-          rm -f capacitor.config.json
-
-          cat > capacitor.config.js <<'EOF'
-          const config = {
-            appId: "com.veylora.app",
-            appName: "Veylora",
-            webDir: "dist",
-            bundledWebRuntime: false
-          };
-
-          module.exports = config;
-          EOF
-
-          echo ""
-          echo "Final Capacitor configuration:"
-          cat capacitor.config.js
-
-          echo ""
-          echo "Checking configuration files:"
-          find . -maxdepth 1 -name "capacitor.config.*" -print
-
-      # =========================================================
-      # VERIFY WEB FILES
-      # =========================================================
-
-      - name: Verify web project
+      - name: Verify project files
         run: |
           set -e
 
@@ -118,169 +50,103 @@ jobs:
           test -f src/style.css
           test -f capacitor.config.js
 
-          echo "All required web files exist."
+          if [ -f capacitor.config.ts ]; then
+            echo "ERROR: capacitor.config.ts still exists."
+            echo "Delete capacitor.config.ts and keep capacitor.config.js only."
+            exit 1
+          fi
 
-      # =========================================================
-      # INSTALL NPM DEPENDENCIES
-      # =========================================================
+          echo "Required files found."
 
       - name: Install dependencies
-        run: |
-          set -e
+        run: npm install
 
-          npm install
-
-      # =========================================================
-      # VERIFY CAPACITOR PACKAGES
-      # =========================================================
-
-      - name: Verify Capacitor
+      - name: Verify Capacitor installation
         run: |
           set -e
 
           test -d node_modules/@capacitor/core
           test -d node_modules/@capacitor/android
           test -d node_modules/@capacitor/cli
+          test -d node_modules/typescript
 
           echo "Capacitor packages installed."
+          echo "TypeScript installed."
 
-          echo ""
-          echo "Capacitor CLI:"
-          ./node_modules/.bin/cap --version
-
-      # =========================================================
-      # BUILD VITE
-      # =========================================================
-
-      - name: Build Veylora web application
+      - name: Check Capacitor CLI
         run: |
           set -e
+          node node_modules/@capacitor/cli/bin/capacitor --version
 
-          npm run build
+      - name: Build Veylora web application
+        run: npm run build
 
+      - name: Verify web build
+        run: |
+          set -e
           test -d dist
           test -f dist/index.html
-
-          echo ""
           echo "Vite build completed successfully."
 
-          find dist -maxdepth 2 -type f -print
-
-      # =========================================================
-      # ADD ANDROID
-      # =========================================================
-
-      - name: Add Android platform
+      - name: Prepare Android platform
         run: |
           set -e
 
           if [ ! -d android ]; then
-            ./node_modules/.bin/cap add android
+            echo "Android platform does not exist."
+            npx cap add android
           else
             echo "Android platform already exists."
           fi
 
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Verify Android project
+        run: |
+          set -e
+
           test -d android
           test -f android/gradlew
 
-      # =========================================================
-      # SYNC CAPACITOR
-      # =========================================================
-
-      - name: Sync Capacitor
-        run: |
-          set -e
-
-          ./node_modules/.bin/cap sync android
-
-      # =========================================================
-      # PREPARE GRADLE
-      # =========================================================
-
-      - name: Prepare Gradle
-        run: |
-          set -e
-
           chmod +x android/gradlew
 
-          test -x android/gradlew
-
-          echo "Gradle is ready."
-
-      # =========================================================
-      # TEST
-      # =========================================================
+          echo "Android project is ready."
 
       - name: Run tests
-        run: |
-          set -e
-
-          npm test
-
-      # =========================================================
-      # BUILD DEBUG APK
-      # =========================================================
+        run: npm test
 
       - name: Build debug APK
         working-directory: android
         run: |
-          set -e
-
-          ./gradlew assembleDebug \
-            --no-daemon \
-            --stacktrace
-
-      # =========================================================
-      # FIND APK
-      # =========================================================
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
       - name: Verify APK
         run: |
           set -e
 
-          echo "========================================"
-          echo "APK OUTPUT"
-          echo "========================================"
-
-          find android/app/build/outputs \
+          APK=$(find android/app/build/outputs/apk/debug \
             -type f \
             -name "*.apk" \
-            -print
-
-          APK="$(find android/app/build/outputs \
-            -type f \
-            -name "*.apk" \
-            -print \
-            -quit)"
+            | head -n 1)
 
           if [ -z "$APK" ]; then
             echo "ERROR: APK was not created."
             exit 1
           fi
 
-          echo ""
-          echo "APK created successfully:"
+          echo "APK created:"
           echo "$APK"
 
-          echo ""
-          echo "APK size:"
           ls -lh "$APK"
 
-      # =========================================================
-      # UPLOAD APK
-      # =========================================================
-
-      - name: Upload Veylora APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: veylora-android-apk
+          name: veylora-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-          retention-days: 30
-
-      # =========================================================
-      # UPLOAD WEB BUILD
-      # =========================================================
 
       - name: Upload web build
         uses: actions/upload-artifact@v4
@@ -288,16 +154,3 @@ jobs:
           name: veylora-web-dist
           path: dist/
           if-no-files-found: error
-          retention-days: 30
-
-      # =========================================================
-      # UPLOAD ANDROID OUTPUTS
-      # =========================================================
-
-      - name: Upload Android outputs
-        uses: actions/upload-artifact@v4
-        with:
-          name: veylora-android-outputs
-          path: android/app/build/outputs/
-          if-no-files-found: error
-          retention-days: 30
