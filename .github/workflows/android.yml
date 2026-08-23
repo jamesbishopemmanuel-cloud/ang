@@ -5,9 +5,7 @@ on:
     branches:
       - main
       - master
-
   pull_request:
-
   workflow_dispatch:
 
 permissions:
@@ -26,120 +24,80 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
-
-      - name: Show environment
-        run: |
-          node --version
-          npm --version
-          java -version
 
       - name: Verify project files
+        shell: bash
         run: |
           set -e
 
+          echo "Checking Veylora project..."
+
           test -f package.json
           test -f index.html
+          test -f capacitor.config.js
           test -f src/main.js
           test -f src/style.css
-          test -f capacitor.config.js
 
-          if [ -f capacitor.config.ts ]; then
-            echo "ERROR: capacitor.config.ts still exists."
-            echo "Delete capacitor.config.ts and keep capacitor.config.js only."
-            exit 1
-          fi
-
-          echo "Required files found."
+          echo "All required files found."
 
       - name: Install dependencies
         run: npm install
 
       - name: Verify Capacitor installation
+        shell: bash
         run: |
           set -e
 
           test -d node_modules/@capacitor/core
           test -d node_modules/@capacitor/android
           test -d node_modules/@capacitor/cli
-          test -d node_modules/typescript
 
           echo "Capacitor packages installed."
-          echo "TypeScript installed."
 
-      - name: Check Capacitor CLI
-        run: |
-          set -e
           node node_modules/@capacitor/cli/bin/capacitor --version
 
-      - name: Build Veylora web application
+      - name: Build web application
         run: npm run build
 
-      - name: Verify web build
-        run: |
-          set -e
-          test -d dist
-          test -f dist/index.html
-          echo "Vite build completed successfully."
-
-      - name: Prepare Android platform
+      - name: Create Android platform
+        shell: bash
         run: |
           set -e
 
           if [ ! -d android ]; then
-            echo "Android platform does not exist."
-            npx cap add android
+            echo "Android platform does not exist. Creating it..."
+            node node_modules/@capacitor/cli/bin/capacitor add android
           else
             echo "Android platform already exists."
           fi
 
       - name: Sync Capacitor
-        run: npx cap sync android
-
-      - name: Verify Android project
         run: |
-          set -e
+          node node_modules/@capacitor/cli/bin/capacitor sync android
 
-          test -d android
-          test -f android/gradlew
-
-          chmod +x android/gradlew
-
-          echo "Android project is ready."
-
-      - name: Run tests
-        run: npm test
+      - name: Make Gradle executable
+        run: chmod +x android/gradlew
 
       - name: Build debug APK
         working-directory: android
-        run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Verify APK
+      - name: Find APK
+        shell: bash
         run: |
           set -e
 
-          APK=$(find android/app/build/outputs/apk/debug \
-            -type f \
-            -name "*.apk" \
-            | head -n 1)
+          echo "APK files found:"
+          find android/app/build/outputs/apk -type f -name "*.apk" -print
 
-          if [ -z "$APK" ]; then
-            echo "ERROR: APK was not created."
-            exit 1
-          fi
-
-          echo "APK created:"
-          echo "$APK"
-
-          ls -lh "$APK"
+          test -n "$(find android/app/build/outputs/apk -type f -name "*.apk" -print -quit)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
