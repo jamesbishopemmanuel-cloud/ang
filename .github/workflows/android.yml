@@ -14,40 +14,42 @@ permissions:
   contents: read
 
 jobs:
-  build-android:
+  build:
     name: Build Veylora Android APK
     runs-on: ubuntu-latest
 
     steps:
-      # -------------------------------------------------------
+
+      # ---------------------------------------------------------
       # CHECKOUT
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
       # NODE
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: package-lock.json
 
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
       # JAVA
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
+
       - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
+          distribution: "temurin"
           java-version: "17"
-          cache: gradle
 
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
       # VERIFY PROJECT
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
+
       - name: Show project files
         run: |
           echo "========================================"
@@ -62,11 +64,16 @@ jobs:
 
           echo ""
           echo "Source files:"
-          find src -maxdepth 2 -type f -print 2>/dev/null || true
+          if [ -d src ]; then
+            find src -maxdepth 2 -type f -print
+          fi
 
-      # -------------------------------------------------------
-      # VERIFY REQUIRED FILES
-      # -------------------------------------------------------
+          echo ""
+          echo "Workflow files:"
+          if [ -d .github/workflows ]; then
+            find .github/workflows -maxdepth 1 -type f -print
+          fi
+
       - name: Verify required files
         run: |
           set -e
@@ -75,42 +82,75 @@ jobs:
           test -f index.html
           test -f src/main.js
           test -f src/style.css
-          test -f capacitor.config.js
 
-          echo "All required web files exist."
+          echo "Required web files found."
 
-      # -------------------------------------------------------
-      # INSTALL DEPENDENCIES
-      # -------------------------------------------------------
-      - name: Install npm dependencies
+      # ---------------------------------------------------------
+      # CAPACITOR CONFIG
+      # ---------------------------------------------------------
+
+      - name: Prepare Capacitor configuration
         run: |
           set -e
 
-          if [ -f package-lock.json ]; then
-            npm ci
+          # Use JavaScript configuration so Capacitor does not
+          # require TypeScript merely to read the config.
+
+          if [ -f capacitor.config.js ]; then
+            echo "capacitor.config.js found."
           else
-            npm install
+            if [ -f capacitor.config.ts ]; then
+              echo "capacitor.config.ts found."
+              echo "The workflow will use capacitor.config.js instead."
+              rm -f capacitor.config.ts
+            fi
+
+            cat > capacitor.config.js <<'EOF'
+          const config = {
+            appId: "com.veylora.app",
+            appName: "Veylora",
+            webDir: "dist",
+            bundledWebRuntime: false
+          };
+
+          module.exports = config;
+          EOF
           fi
 
-      # -------------------------------------------------------
+          echo ""
+          echo "Capacitor configuration:"
+          cat capacitor.config.js
+
+      # ---------------------------------------------------------
+      # INSTALL
+      # ---------------------------------------------------------
+
+      - name: Install dependencies
+        run: |
+          set -e
+
+          npm install
+
+      # ---------------------------------------------------------
       # VERIFY CAPACITOR
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
+
       - name: Verify Capacitor installation
         run: |
           set -e
 
-          echo "Capacitor CLI:"
+          test -d node_modules/@capacitor/core
+          test -d node_modules/@capacitor/android
+          test -d node_modules/@capacitor/cli
+
+          echo "Capacitor packages installed."
+
           node node_modules/@capacitor/cli/bin/capacitor --version
 
-          echo ""
-          echo "Capacitor Android:"
-          test -d node_modules/@capacitor/android
-
-          echo "Capacitor installation OK."
-
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
       # BUILD WEB APPLICATION
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
+
       - name: Build Veylora web application
         run: |
           set -e
@@ -118,80 +158,80 @@ jobs:
           npm run build
 
           test -d dist
+          test -f dist/index.html
 
           echo ""
           echo "Web build completed."
 
-          echo ""
-          echo "dist contents:"
           find dist -maxdepth 2 -type f -print
 
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
       # CREATE ANDROID PLATFORM
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
+
       - name: Add Android platform
         run: |
           set -e
 
           if [ ! -d android ]; then
-            echo "Android platform does not exist."
-            echo "Creating Android platform..."
-
-            npx cap add android
+            node node_modules/@capacitor/cli/bin/capacitor add android
           else
             echo "Android platform already exists."
           fi
 
-      # -------------------------------------------------------
-      # SYNC WEB BUILD WITH ANDROID
-      # -------------------------------------------------------
-      - name: Sync Capacitor Android
-        run: |
-          set -e
-
-          npx cap sync android
-
-      # -------------------------------------------------------
-      # VERIFY ANDROID PROJECT
-      # -------------------------------------------------------
-      - name: Verify Android project
-        run: |
-          set -e
-
           test -d android
           test -f android/gradlew
-          test -d android/app
+
+      # ---------------------------------------------------------
+      # CAPACITOR SYNC
+      # ---------------------------------------------------------
+
+      - name: Sync web application with Android
+        run: |
+          set -e
+
+          node node_modules/@capacitor/cli/bin/capacitor sync android
+
+      # ---------------------------------------------------------
+      # GRADLE PERMISSION
+      # ---------------------------------------------------------
+
+      - name: Prepare Gradle
+        run: |
+          set -e
 
           chmod +x android/gradlew
 
-          echo "Android project is ready."
+          test -x android/gradlew
 
-      # -------------------------------------------------------
-      # RUN TESTS
-      # -------------------------------------------------------
+          echo "Gradle wrapper ready."
+
+      # ---------------------------------------------------------
+      # TESTS
+      # ---------------------------------------------------------
+
       - name: Run tests
         run: |
           set -e
+
           npm test
 
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
       # BUILD DEBUG APK
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
+
       - name: Build debug APK
         working-directory: android
         run: |
           set -e
 
-          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
-          ./gradlew assembleDebug \
-            --no-daemon \
-            --stacktrace
+      # ---------------------------------------------------------
+      # VERIFY APK
+      # ---------------------------------------------------------
 
-      # -------------------------------------------------------
-      # FIND APK
-      # -------------------------------------------------------
-      - name: Find generated APK
+      - name: Verify APK
         run: |
           set -e
 
@@ -199,26 +239,17 @@ jobs:
           echo "SEARCHING FOR APK"
           echo "========================================"
 
-          find android/app/build/outputs/apk \
-            -type f \
-            -name "*.apk" \
-            -print
+          find android/app/build/outputs -type f -name "*.apk" -print
 
-          APK_COUNT=$(find android/app/build/outputs/apk \
-            -type f \
-            -name "*.apk" | wc -l)
-
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "ERROR: No APK was generated."
-            exit 1
-          fi
+          test -n "$(find android/app/build/outputs -type f -name '*.apk' -print -quit)"
 
           echo ""
-          echo "APK successfully generated."
+          echo "APK successfully created."
 
-      # -------------------------------------------------------
-      # UPLOAD DEBUG APK
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
+      # UPLOAD APK
+      # ---------------------------------------------------------
+
       - name: Upload Veylora APK
         uses: actions/upload-artifact@v4
         with:
@@ -228,24 +259,28 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      # -------------------------------------------------------
+      # ---------------------------------------------------------
       # UPLOAD WEB BUILD
-      # -------------------------------------------------------
-      - name: Upload web dist
+      # ---------------------------------------------------------
+
+      - name: Upload Veylora web build
         uses: actions/upload-artifact@v4
         with:
           name: veylora-web-dist
-          path: dist/
+          path: |
+            dist/
           if-no-files-found: error
           retention-days: 30
 
-      # -------------------------------------------------------
-      # UPLOAD ANDROID PROJECT
-      # -------------------------------------------------------
-      - name: Upload Android project
+      # ---------------------------------------------------------
+      # UPLOAD ANDROID BUILD INFORMATION
+      # ---------------------------------------------------------
+
+      - name: Upload Android build folder
         uses: actions/upload-artifact@v4
         with:
-          name: veylora-android-project
-          path: android/
+          name: veylora-android-build
+          path: |
+            android/app/build/outputs/
           if-no-files-found: error
           retention-days: 30
