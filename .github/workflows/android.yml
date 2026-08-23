@@ -5,9 +5,7 @@ on:
     branches:
       - main
       - master
-
   pull_request:
-
   workflow_dispatch:
 
 permissions:
@@ -20,42 +18,46 @@ jobs:
 
     steps:
 
-      # ---------------------------------------------------------
+      # =========================================================
       # CHECKOUT
-      # ---------------------------------------------------------
+      # =========================================================
 
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ---------------------------------------------------------
-      # NODE
-      # ---------------------------------------------------------
+      # =========================================================
+      # NODE.JS
+      # =========================================================
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      # ---------------------------------------------------------
-      # JAVA
-      # ---------------------------------------------------------
+      # =========================================================
+      # JAVA 17
+      # =========================================================
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: "temurin"
           java-version: "17"
 
-      # ---------------------------------------------------------
-      # VERIFY PROJECT
-      # ---------------------------------------------------------
+      # =========================================================
+      # SHOW PROJECT
+      # =========================================================
 
-      - name: Show project files
+      - name: Inspect project
         run: |
+          set -e
+
           echo "========================================"
           echo "VEY LORA PROJECT"
           echo "========================================"
 
+          echo ""
+          echo "Current directory:"
           pwd
 
           echo ""
@@ -68,44 +70,22 @@ jobs:
             find src -maxdepth 2 -type f -print
           fi
 
-          echo ""
-          echo "Workflow files:"
-          if [ -d .github/workflows ]; then
-            find .github/workflows -maxdepth 1 -type f -print
-          fi
-
-      - name: Verify required files
-        run: |
-          set -e
-
-          test -f package.json
-          test -f index.html
-          test -f src/main.js
-          test -f src/style.css
-
-          echo "Required web files found."
-
-      # ---------------------------------------------------------
-      # CAPACITOR CONFIG
-      # ---------------------------------------------------------
+      # =========================================================
+      # REMOVE CONFLICTING CAPACITOR CONFIGS
+      # =========================================================
 
       - name: Prepare Capacitor configuration
         run: |
           set -e
 
-          # Use JavaScript configuration so Capacitor does not
-          # require TypeScript merely to read the config.
+          echo "Removing conflicting Capacitor configuration files..."
 
-          if [ -f capacitor.config.js ]; then
-            echo "capacitor.config.js found."
-          else
-            if [ -f capacitor.config.ts ]; then
-              echo "capacitor.config.ts found."
-              echo "The workflow will use capacitor.config.js instead."
-              rm -f capacitor.config.ts
-            fi
+          rm -f capacitor.config.ts
+          rm -f capacitor.config.mjs
+          rm -f capacitor.config.cjs
+          rm -f capacitor.config.json
 
-            cat > capacitor.config.js <<'EOF'
+          cat > capacitor.config.js <<'EOF'
           const config = {
             appId: "com.veylora.app",
             appName: "Veylora",
@@ -115,15 +95,34 @@ jobs:
 
           module.exports = config;
           EOF
-          fi
 
           echo ""
-          echo "Capacitor configuration:"
+          echo "Final Capacitor configuration:"
           cat capacitor.config.js
 
-      # ---------------------------------------------------------
-      # INSTALL
-      # ---------------------------------------------------------
+          echo ""
+          echo "Checking configuration files:"
+          find . -maxdepth 1 -name "capacitor.config.*" -print
+
+      # =========================================================
+      # VERIFY WEB FILES
+      # =========================================================
+
+      - name: Verify web project
+        run: |
+          set -e
+
+          test -f package.json
+          test -f index.html
+          test -f src/main.js
+          test -f src/style.css
+          test -f capacitor.config.js
+
+          echo "All required web files exist."
+
+      # =========================================================
+      # INSTALL NPM DEPENDENCIES
+      # =========================================================
 
       - name: Install dependencies
         run: |
@@ -131,11 +130,11 @@ jobs:
 
           npm install
 
-      # ---------------------------------------------------------
-      # VERIFY CAPACITOR
-      # ---------------------------------------------------------
+      # =========================================================
+      # VERIFY CAPACITOR PACKAGES
+      # =========================================================
 
-      - name: Verify Capacitor installation
+      - name: Verify Capacitor
         run: |
           set -e
 
@@ -145,11 +144,13 @@ jobs:
 
           echo "Capacitor packages installed."
 
-          node node_modules/@capacitor/cli/bin/capacitor --version
+          echo ""
+          echo "Capacitor CLI:"
+          ./node_modules/.bin/cap --version
 
-      # ---------------------------------------------------------
-      # BUILD WEB APPLICATION
-      # ---------------------------------------------------------
+      # =========================================================
+      # BUILD VITE
+      # =========================================================
 
       - name: Build Veylora web application
         run: |
@@ -161,20 +162,20 @@ jobs:
           test -f dist/index.html
 
           echo ""
-          echo "Web build completed."
+          echo "Vite build completed successfully."
 
           find dist -maxdepth 2 -type f -print
 
-      # ---------------------------------------------------------
-      # CREATE ANDROID PLATFORM
-      # ---------------------------------------------------------
+      # =========================================================
+      # ADD ANDROID
+      # =========================================================
 
       - name: Add Android platform
         run: |
           set -e
 
           if [ ! -d android ]; then
-            node node_modules/@capacitor/cli/bin/capacitor add android
+            ./node_modules/.bin/cap add android
           else
             echo "Android platform already exists."
           fi
@@ -182,19 +183,19 @@ jobs:
           test -d android
           test -f android/gradlew
 
-      # ---------------------------------------------------------
-      # CAPACITOR SYNC
-      # ---------------------------------------------------------
+      # =========================================================
+      # SYNC CAPACITOR
+      # =========================================================
 
-      - name: Sync web application with Android
+      - name: Sync Capacitor
         run: |
           set -e
 
-          node node_modules/@capacitor/cli/bin/capacitor sync android
+          ./node_modules/.bin/cap sync android
 
-      # ---------------------------------------------------------
-      # GRADLE PERMISSION
-      # ---------------------------------------------------------
+      # =========================================================
+      # PREPARE GRADLE
+      # =========================================================
 
       - name: Prepare Gradle
         run: |
@@ -204,11 +205,11 @@ jobs:
 
           test -x android/gradlew
 
-          echo "Gradle wrapper ready."
+          echo "Gradle is ready."
 
-      # ---------------------------------------------------------
-      # TESTS
-      # ---------------------------------------------------------
+      # =========================================================
+      # TEST
+      # =========================================================
 
       - name: Run tests
         run: |
@@ -216,71 +217,87 @@ jobs:
 
           npm test
 
-      # ---------------------------------------------------------
+      # =========================================================
       # BUILD DEBUG APK
-      # ---------------------------------------------------------
+      # =========================================================
 
       - name: Build debug APK
         working-directory: android
         run: |
           set -e
 
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug \
+            --no-daemon \
+            --stacktrace
 
-      # ---------------------------------------------------------
-      # VERIFY APK
-      # ---------------------------------------------------------
+      # =========================================================
+      # FIND APK
+      # =========================================================
 
       - name: Verify APK
         run: |
           set -e
 
           echo "========================================"
-          echo "SEARCHING FOR APK"
+          echo "APK OUTPUT"
           echo "========================================"
 
-          find android/app/build/outputs -type f -name "*.apk" -print
+          find android/app/build/outputs \
+            -type f \
+            -name "*.apk" \
+            -print
 
-          test -n "$(find android/app/build/outputs -type f -name '*.apk' -print -quit)"
+          APK="$(find android/app/build/outputs \
+            -type f \
+            -name "*.apk" \
+            -print \
+            -quit)"
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK was not created."
+            exit 1
+          fi
 
           echo ""
-          echo "APK successfully created."
+          echo "APK created successfully:"
+          echo "$APK"
 
-      # ---------------------------------------------------------
+          echo ""
+          echo "APK size:"
+          ls -lh "$APK"
+
+      # =========================================================
       # UPLOAD APK
-      # ---------------------------------------------------------
+      # =========================================================
 
       - name: Upload Veylora APK
         uses: actions/upload-artifact@v4
         with:
           name: veylora-android-apk
-          path: |
-            android/app/build/outputs/apk/debug/*.apk
+          path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
 
-      # ---------------------------------------------------------
+      # =========================================================
       # UPLOAD WEB BUILD
-      # ---------------------------------------------------------
+      # =========================================================
 
-      - name: Upload Veylora web build
+      - name: Upload web build
         uses: actions/upload-artifact@v4
         with:
           name: veylora-web-dist
-          path: |
-            dist/
+          path: dist/
           if-no-files-found: error
           retention-days: 30
 
-      # ---------------------------------------------------------
-      # UPLOAD ANDROID BUILD INFORMATION
-      # ---------------------------------------------------------
+      # =========================================================
+      # UPLOAD ANDROID OUTPUTS
+      # =========================================================
 
-      - name: Upload Android build folder
+      - name: Upload Android outputs
         uses: actions/upload-artifact@v4
         with:
-          name: veylora-android-build
-          path: |
-            android/app/build/outputs/
+          name: veylora-android-outputs
+          path: android/app/build/outputs/
           if-no-files-found: error
           retention-days: 30
