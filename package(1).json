@@ -1,7 +1,6 @@
-
 {
   "name": "veylora",
-  "version": "13.0.2",
+  "version": "13.0.4",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,12 +9,12 @@
     "test": "node --test"
   },
   "dependencies": {
-    "@capacitor/android": "^7.4.0",
-    "@capacitor/core": "^7.4.0",
-    "socket.io-client": "^4.8.1"
+    "@capacitor/android": "7.4.0",
+    "@capacitor/core": "7.4.0",
+    "socket.io-client": "4.8.1"
   },
   "devDependencies": {
-    "@capacitor/cli": "^7.4.0",
-    "vite": "^7.3.6"
+    "@capacitor/cli": "7.4.0",
+    "vite": "7.3.6"
   }
 }
