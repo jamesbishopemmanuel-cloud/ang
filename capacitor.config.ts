@@ -1,6 +1,4 @@
-
 import type { CapacitorConfig } from "@capacitor/cli";
-
 
 const config: CapacitorConfig = {
 
@@ -10,9 +8,16 @@ const config: CapacitorConfig = {
 
   webDir: "dist",
 
-  bundledWebRuntime: false
+  bundledWebRuntime: false,
+
+  server: {
+    androidScheme: "https"
+  },
+
+  android: {
+    allowMixedContent: true
+  }
 
 };
-
 
 export default config;
