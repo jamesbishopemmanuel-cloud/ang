@@ -18,107 +18,110 @@ jobs:
 
     runs-on: ubuntu-latest
 
-
     steps:
 
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
 
-      - name: Show project structure
+      - name: Debug Repository Structure
         run: |
-          echo "Current directory:"
+          echo "========== LOCATION =========="
           pwd
 
-          echo "Root files:"
+          echo "========== ROOT =========="
           ls -la
 
-          echo "All files:"
-          find . -maxdepth 3 -type f | sort
+          echo "========== ALL FILES =========="
+          find . -maxdepth 4 -type f | sort
 
 
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: "22"
+          cache: npm
 
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
 
-      - name: Install dependencies
+      - name: Check Required Files
+        run: |
+          set -e
+
+          REQUIRED_FILES="
+          package.json
+          index.html
+          src/main.js
+          src/style.css
+          capacitor.config.ts
+          "
+
+          for FILE in $REQUIRED_FILES
+          do
+            if [ -f "$FILE" ]; then
+              echo "FOUND: $FILE"
+            else
+              echo "MISSING: $FILE"
+              exit 1
+            fi
+          done
+
+          echo "All required files found"
+
+
+      - name: Install NPM Dependencies
         run: |
           npm install
 
 
-      - name: Verify project files
-        run: |
-          set -e
-
-          for file in \
-            package.json \
-            index.html \
-            src/main.js \
-            src/style.css \
-            capacitor.config.ts
-          do
-            if [ ! -f "$file" ]; then
-              echo "Missing file: $file"
-              exit 1
-            fi
-
-            echo "Found: $file"
-          done
-
-          echo "Project files OK"
-
-
-      - name: Install Capacitor
+      - name: Install Capacitor Packages
         run: |
           npm install @capacitor/core@7.4.0
           npm install @capacitor/android@7.4.0
-          npm install -D @capacitor/cli@7.4.0
-          npm install -D typescript
+          npm install --save-dev @capacitor/cli@7.4.0
+          npm install --save-dev typescript
 
 
       - name: Verify Capacitor
         run: |
+          echo "Checking Capacitor..."
+
           test -d node_modules/@capacitor/core
           test -d node_modules/@capacitor/android
           test -d node_modules/@capacitor/cli
 
-          echo "Capacitor installed"
+          echo "Capacitor installed successfully"
 
 
-      - name: Check tools
-        run: |
-          node -v
-          npm -v
-          npx vite --version
-
-
-      - name: Build web app
+      - name: Build Web App
         run: |
           npm run build
 
 
-      - name: Add Android platform
+      - name: Check Capacitor Version
+        run: |
+          npx cap --version
+
+
+      - name: Add Android Platform
         run: |
           if [ ! -d android ]; then
             npx cap add android
           fi
 
 
-      - name: Sync Capacitor Android
+      - name: Sync Android
         run: |
           npx cap sync android
 
 
-      - name: Build Debug APK
+      - name: Build APK
         working-directory: android
         run: |
           chmod +x gradlew
@@ -128,13 +131,13 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Veylora-debug-apk
+          name: Veylora-Android-APK
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
 
-      - name: Upload Website Build
+      - name: Upload Web Files
         uses: actions/upload-artifact@v4
         with:
-          name: Veylora-web-dist
+          name: Veylora-Web-Build
           path: dist/
