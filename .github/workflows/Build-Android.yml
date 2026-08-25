@@ -1,3 +1,4 @@
+
 name: Veylora Android Build
 
 on:
@@ -12,9 +13,11 @@ on:
 
 
 jobs:
+
   build:
 
     runs-on: ubuntu-latest
+
 
     steps:
 
@@ -22,16 +25,16 @@ jobs:
         uses: actions/checkout@v4
 
 
-      - name: Show repository structure
+      - name: Show project structure
         run: |
           echo "Current directory:"
           pwd
 
-          echo "Files:"
+          echo "Root files:"
           ls -la
 
-          echo "All project files:"
-          find . -maxdepth 3 -type f
+          echo "All files:"
+          find . -maxdepth 3 -type f | sort
 
 
       - name: Setup Node.js
@@ -40,30 +43,42 @@ jobs:
           node-version: 22
 
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
 
-      - name: Verify required files
-        run: |
-          set -e
-
-          test -f package.json
-          test -f index.html
-          test -f src/main.js
-          test -f src/style.css
-          test -f capacitor.config.ts
-
-          echo "Project files OK"
-
-
       - name: Install dependencies
         run: |
           npm install
 
+
+      - name: Verify project files
+        run: |
+          set -e
+
+          for file in \
+            package.json \
+            index.html \
+            src/main.js \
+            src/style.css \
+            capacitor.config.ts
+          do
+            if [ ! -f "$file" ]; then
+              echo "Missing file: $file"
+              exit 1
+            fi
+
+            echo "Found: $file"
+          done
+
+          echo "Project files OK"
+
+
+      - name: Install Capacitor
+        run: |
           npm install @capacitor/core@7.4.0
           npm install @capacitor/android@7.4.0
           npm install -D @capacitor/cli@7.4.0
@@ -79,14 +94,14 @@ jobs:
           echo "Capacitor installed"
 
 
-      - name: Check versions
+      - name: Check tools
         run: |
           node -v
           npm -v
           npx vite --version
 
 
-      - name: Build Veylora web app
+      - name: Build web app
         run: |
           npm run build
 
@@ -98,12 +113,12 @@ jobs:
           fi
 
 
-      - name: Sync Capacitor
+      - name: Sync Capacitor Android
         run: |
           npx cap sync android
 
 
-      - name: Build APK
+      - name: Build Debug APK
         working-directory: android
         run: |
           chmod +x gradlew
@@ -113,13 +128,13 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: veylora-debug-apk
+          name: Veylora-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
 
-      - name: Upload Web Build
+      - name: Upload Website Build
         uses: actions/upload-artifact@v4
         with:
-          name: veylora-web-dist
+          name: Veylora-web-dist
           path: dist/
