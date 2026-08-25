@@ -1,24 +1,123 @@
-
-name: Veylora Test Build
+name: Veylora Android Build
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+      - master
+
+  pull_request:
+
+  workflow_dispatch:
+
 
 jobs:
-  test:
+  build:
+
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Show files
+
+      - name: Show project files
         run: |
-          echo "Current folder:"
+          echo "Current directory:"
           pwd
 
           echo "Files:"
-          find . -maxdepth 4 -type f | sort
+          ls -la
+
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+
+      - name: Verify project files
+        run: |
+          set -e
+
+          test -f package.json
+          test -f index.html
+          test -f main.js
+          test -f style.css
+          test -f capacitor.config.ts
+
+          echo "Project files OK"
+
+
+      - name: Install dependencies
+        run: |
+          npm install
+
+
+      - name: Install Capacitor
+        run: |
+          npm install @capacitor/core@7.4.0
+          npm install @capacitor/android@7.4.0
+          npm install -D @capacitor/cli@7.4.0
+          npm install -D typescript
+
+
+      - name: Verify Capacitor installation
+        run: |
+          test -d node_modules/@capacitor/core
+          test -d node_modules/@capacitor/android
+          test -d node_modules/@capacitor/cli
+
+          echo "Capacitor installed successfully"
+
+
+      - name: Build Web App
+        run: |
+          npm run build
+
+
+      - name: Check Capacitor
+        run: |
+          npx cap --version
+
+
+      - name: Add Android platform
+        run: |
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+
+
+      - name: Sync Android project
+        run: |
+          npx cap sync android
+
+
+      - name: Build Debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Veylora-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+
+      - name: Upload Web Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Veylora-web-build
+          path: dist/
