@@ -22,53 +22,73 @@ jobs:
         uses: actions/checkout@v4
 
 
+      - name: Show repository structure
+        run: |
+          echo "Current directory:"
+          pwd
+
+          echo "Files:"
+          ls -la
+
+          echo "All project files:"
+          find . -maxdepth 3 -type f
+
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
 
-      - name: Setup Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
 
-      - name: Verify project structure
+      - name: Verify required files
         run: |
+          set -e
+
           test -f package.json
           test -f index.html
           test -f src/main.js
           test -f src/style.css
           test -f capacitor.config.ts
+
           echo "Project files OK"
 
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: |
           npm install
-          npm install @capacitor/core@7.4.0 @capacitor/android@7.4.0 --save
-          npm install @capacitor/cli@7.4.0 --save-dev
+
+          npm install @capacitor/core@7.4.0
+          npm install @capacitor/android@7.4.0
+          npm install -D @capacitor/cli@7.4.0
+          npm install -D typescript
 
 
-      - name: Verify Capacitor installation
+      - name: Verify Capacitor
         run: |
           test -d node_modules/@capacitor/core
           test -d node_modules/@capacitor/android
           test -d node_modules/@capacitor/cli
-          echo "Capacitor installed successfully"
+
+          echo "Capacitor installed"
 
 
-      - name: Show versions
+      - name: Check versions
         run: |
           node -v
           npm -v
           npx vite --version
 
 
-      - name: Build Veylora Web App
-        run: npm run build
+      - name: Build Veylora web app
+        run: |
+          npm run build
 
 
       - name: Add Android platform
@@ -78,12 +98,12 @@ jobs:
           fi
 
 
-      - name: Sync Capacitor Android
+      - name: Sync Capacitor
         run: |
           npx cap sync android
 
 
-      - name: Build Debug APK
+      - name: Build APK
         working-directory: android
         run: |
           chmod +x gradlew
