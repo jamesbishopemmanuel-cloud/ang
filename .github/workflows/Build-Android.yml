@@ -1,4 +1,4 @@
-name: Veylora Android Build
+name: Build Veylora Android APK
 
 on:
   push:
@@ -12,29 +12,25 @@ on:
 
 
 jobs:
-  build:
+
+  android-build:
 
     runs-on: ubuntu-latest
 
+
     steps:
 
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
 
-      - name: Show project files
-        run: |
-          echo "Current directory:"
-          pwd
 
-          echo "Files:"
-          ls -la
-
-
-      - name: Setup Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
+
 
 
       - name: Setup Java
@@ -44,25 +40,28 @@ jobs:
           java-version: "17"
 
 
+
       - name: Verify project files
         run: |
           set -e
 
           test -f package.json
           test -f index.html
-          test -f main.js
-          test -f style.css
+          test -f src/main.js
+          test -f src/style.css
           test -f capacitor.config.ts
 
           echo "Project files OK"
 
 
-      - name: Install dependencies
+
+      - name: Install npm dependencies
         run: |
           npm install
 
 
-      - name: Install Capacitor
+
+      - name: Install Capacitor packages
         run: |
           npm install @capacitor/core@7.4.0
           npm install @capacitor/android@7.4.0
@@ -70,23 +69,17 @@ jobs:
           npm install -D typescript
 
 
-      - name: Verify Capacitor installation
-        run: |
-          test -d node_modules/@capacitor/core
-          test -d node_modules/@capacitor/android
-          test -d node_modules/@capacitor/cli
-
-          echo "Capacitor installed successfully"
-
-
-      - name: Build Web App
-        run: |
-          npm run build
-
 
       - name: Check Capacitor
         run: |
           npx cap --version
+
+
+
+      - name: Build Vite web app
+        run: |
+          npm run build
+
 
 
       - name: Add Android platform
@@ -96,16 +89,24 @@ jobs:
           fi
 
 
-      - name: Sync Android project
+
+      - name: Sync Capacitor
         run: |
           npx cap sync android
 
 
-      - name: Build Debug APK
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+
+
+      - name: Build APK
         working-directory: android
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
+
 
 
       - name: Upload APK
@@ -114,10 +115,3 @@ jobs:
           name: Veylora-debug-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
-
-
-      - name: Upload Web Build
-        uses: actions/upload-artifact@v4
-        with:
-          name: Veylora-web-build
-          path: dist/
