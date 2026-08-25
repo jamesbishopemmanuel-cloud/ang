@@ -1,9 +1,8 @@
-
 {
   "name": "veylora",
   "version": "14.0.0",
   "private": true,
-  "description": "Veylora messaging application",
+  "description": "Veylora powerful messaging application",
   "type": "module",
   "scripts": {
     "dev": "vite",
