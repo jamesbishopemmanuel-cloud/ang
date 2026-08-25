@@ -1,124 +1,169 @@
 
-import "./style.css";
-
 import { io } from "socket.io-client";
+import { Capacitor } from "@capacitor/core";
 
-const app = document.querySelector("#app");
+const APP_NAME = "Veylora";
 
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8080";
-
+// Change this to your backend URL when you deploy
+const SERVER_URL = "http://localhost:3000";
 
 let socket = null;
 
+function createApp() {
+  document.querySelector("#app").innerHTML = `
+    <div class="veylora">
+      <header>
+        <h1>${APP_NAME}</h1>
+        <p>Private messaging platform</p>
+      </header>
 
-function render() {
+      <section class="login">
+        <input id="username" placeholder="Enter username">
+        <button id="connect">Connect</button>
+      </section>
 
-  app.innerHTML = `
-    <div class="container">
+      <section id="chat" style="display:none;">
+        <div id="status">Offline</div>
 
-      <div class="logo">
-        Veylora
-      </div>
+        <div id="messages"></div>
 
-      <h1>
-        Connect • Create • Share
-      </h1>
-
-      <p class="status">
-        Welcome to Veylora messaging platform
-      </p>
-
-
-      <div class="card">
-
-        <h2>
-          Real-time Messaging
-        </h2>
-
-        <p>
-          Fast, secure communication with AI,
-          voice calls, video calls and offline support.
-        </p>
-
-        <button id="connect">
-          Connect Server
-        </button>
-
-        <div id="result"></div>
-
-      </div>
-
-
+        <div class="send-box">
+          <input id="message" placeholder="Type message">
+          <button id="send">Send</button>
+        </div>
+      </section>
     </div>
   `;
 
-
   document
     .getElementById("connect")
-    .onclick = connectServer;
+    .addEventListener("click", connectUser);
+
+  document
+    .getElementById("send")
+    .addEventListener("click", sendMessage);
+}
+
+
+function connectUser() {
+
+  const username =
+    document.getElementById("username").value.trim();
+
+  if (!username) {
+    alert("Enter username");
+    return;
+  }
+
+
+  socket = io(SERVER_URL, {
+    transports: ["websocket"]
+  });
+
+
+  socket.on("connect", () => {
+
+    document.getElementById("chat").style.display = "block";
+
+    document.getElementById("status").innerHTML =
+      "Connected";
+
+    socket.emit("join", {
+      username
+    });
+
+  });
+
+
+  socket.on("message", (data)=>{
+
+    addMessage(
+      data.username + ": " + data.message
+    );
+
+  });
+
+
+  socket.on("disconnect",()=>{
+
+    document.getElementById("status").innerHTML =
+      "Disconnected";
+
+  });
 
 }
 
 
-function connectServer(){
 
-  const result =
-    document.getElementById("result");
+function sendMessage(){
 
+  const input =
+    document.getElementById("message");
 
-  result.innerHTML =
-    "Connecting...";
-
-
-  try {
-
-    socket = io(API_URL, {
-      transports:[
-        "websocket"
-      ]
-    });
+  const text =
+    input.value.trim();
 
 
-    socket.on(
-      "connect",
-      ()=>{
+  if(!text || !socket) return;
 
-        result.innerHTML =
-        `
-        <span class="online">
-        Connected successfully
-        </span>
-        `;
 
-      }
+  socket.emit("message",{
+    message:text
+  });
+
+
+  input.value="";
+
+}
+
+
+
+function addMessage(text){
+
+  const box =
+    document.getElementById("messages");
+
+
+  const div =
+    document.createElement("div");
+
+  div.className="message";
+
+  div.textContent=text;
+
+
+  box.appendChild(div);
+
+
+  box.scrollTop =
+    box.scrollHeight;
+
+}
+
+
+
+// Capacitor device information
+async function initialize(){
+
+  if(Capacitor.isNativePlatform()){
+
+    console.log(
+      "Running as native Android app"
     );
 
+  }
+  else{
 
-    socket.on(
-      "connect_error",
-      ()=>{
-
-        result.innerHTML =
-        `
-        <span class="error">
-        Server connection failed
-        </span>
-        `;
-
-      }
+    console.log(
+      "Running as web app"
     );
-
-
-  } catch(error){
-
-    result.innerHTML =
-    "Connection error";
 
   }
 
+
+  createApp();
+
 }
 
 
-
-render();
+initialize();
